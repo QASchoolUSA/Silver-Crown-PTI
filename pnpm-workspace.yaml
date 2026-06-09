@@ -1,0 +1,5 @@
+allowBuilds:
+  msgpackr-extract: true
+minimumReleaseAgeExclude:
+  - '@react-navigation/bottom-tabs@7.17.2'
+  - '@react-navigation/elements@2.9.22'
