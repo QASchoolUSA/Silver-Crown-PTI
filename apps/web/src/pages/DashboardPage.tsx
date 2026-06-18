@@ -2,18 +2,20 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Truck, ClipboardList, AlertTriangle } from 'lucide-react';
 import { subscribeCompanyLoads, subscribeCompanyInspections } from '@silver-crown/shared';
+import type { Load } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
+import ActiveLoadsMap from '../components/ActiveLoadsMap';
 
 export default function DashboardPage() {
   const { profile } = useAuth();
-  const [loads, setLoads] = useState(0);
+  const [activeLoads, setActiveLoads] = useState<Load[]>([]);
   const [inspections, setInspections] = useState(0);
   const [defects, setDefects] = useState(0);
 
   useEffect(() => {
     if (!profile?.companyId) return;
     const unsubLoads = subscribeCompanyLoads(profile.companyId, (data) => {
-      setLoads(data.filter((l) => l.status !== 'delivered').length);
+      setActiveLoads(data.filter((l) => l.status !== 'delivered'));
     });
     const unsubInspections = subscribeCompanyInspections(profile.companyId, (data) => {
       setInspections(data.length);
@@ -23,7 +25,7 @@ export default function DashboardPage() {
   }, [profile?.companyId]);
 
   const stats = [
-    { label: 'Active Loads', value: loads, icon: Truck, color: 'text-primary' },
+    { label: 'Active Loads', value: activeLoads.length, icon: Truck, color: 'text-primary' },
     { label: 'Total Inspections', value: inspections, icon: ClipboardList, color: 'text-primary' },
     { label: 'Defects Found', value: defects, icon: AlertTriangle, color: 'text-error' },
   ];
@@ -42,6 +44,19 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <div className="mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+            Active Loads Map
+          </h2>
+          <Link to="/loads" className="text-primary text-xs font-bold uppercase tracking-wider hover:underline">
+            View all loads →
+          </Link>
+        </div>
+        <ActiveLoadsMap loads={activeLoads} />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Link to="/loads/new" className="bg-primary/10 border border-primary rounded-lg p-6 hover:bg-primary/20 transition-colors">
           <h3 className="font-bold text-primary mb-1">Create New Load</h3>
