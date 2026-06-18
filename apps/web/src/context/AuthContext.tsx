@@ -22,6 +22,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!firebaseUser) {
         setProfile(null);
         setLoading(false);
+      } else {
+        setProfile(null);
+        setLoading(true);
       }
     });
   }, []);
@@ -39,7 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setLoading(false);
       },
-      () => setLoading(false)
+      () => {
+        setProfile(null);
+        setLoading(false);
+      }
     );
 
     return unsubscribe;

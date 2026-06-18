@@ -76,17 +76,41 @@ export function getFirebaseFunctions() {
 }
 
 export function getFirebaseConfigFromEnv(env: Record<string, string | undefined>): FirebaseEnvConfig {
-  const prefix = env.EXPO_PUBLIC_FIREBASE_API_KEY ? 'EXPO_PUBLIC_' : 'VITE_';
+  const read = (key: string) =>
+    env[`VITE_${key}`] ?? env[`EXPO_PUBLIC_${key}`] ?? '';
+
   const useEmulators =
     env.USE_FIREBASE_EMULATORS === 'true' || env.VITE_USE_FIREBASE_EMULATORS === 'true';
 
-  return {
-    apiKey: env[`${prefix}FIREBASE_API_KEY`] ?? '',
-    authDomain: env[`${prefix}FIREBASE_AUTH_DOMAIN`] ?? '',
-    projectId: env[`${prefix}FIREBASE_PROJECT_ID`] ?? '',
-    storageBucket: env[`${prefix}FIREBASE_STORAGE_BUCKET`] ?? '',
-    messagingSenderId: env[`${prefix}FIREBASE_MESSAGING_SENDER_ID`] ?? '',
-    appId: env[`${prefix}FIREBASE_APP_ID`] ?? '',
+  const projectId = read('FIREBASE_PROJECT_ID') || 'silver-crown-app';
+
+  const config: FirebaseEnvConfig = {
+    apiKey: read('FIREBASE_API_KEY'),
+    authDomain: read('FIREBASE_AUTH_DOMAIN') || `${projectId}.firebaseapp.com`,
+    projectId,
+    storageBucket: read('FIREBASE_STORAGE_BUCKET') || `${projectId}.firebasestorage.app`,
+    messagingSenderId: read('FIREBASE_MESSAGING_SENDER_ID'),
+    appId: read('FIREBASE_APP_ID'),
     useEmulators,
   };
+
+  if (useEmulators && !config.apiKey) {
+    return {
+      apiKey: 'demo-api-key',
+      authDomain: `${projectId}.firebaseapp.com`,
+      projectId,
+      storageBucket: `${projectId}.firebasestorage.app`,
+      messagingSenderId: config.messagingSenderId || 'demo-sender',
+      appId: config.appId || 'demo-app-id',
+      useEmulators: true,
+    };
+  }
+
+  if (!config.apiKey) {
+    throw new Error(
+      'Missing Firebase config. Copy .env.example to .env at the repo root and fill in your Firebase credentials.',
+    );
+  }
+
+  return config;
 }

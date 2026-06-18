@@ -15,6 +15,7 @@ import SignUpScreen from './screens/SignUpScreen';
 import AuthLoadingScreen from './screens/AuthLoadingScreen';
 import LoadBoardScreen from './screens/LoadBoardScreen';
 import AdminLoadsScreen from './screens/AdminLoadsScreen';
+import LoadDetailScreen from './screens/LoadDetailScreen';
 import InspectionsScreen from './screens/InspectionsScreen';
 import AdminInspectionsScreen from './screens/AdminInspectionsScreen';
 import InspectionDetailScreen from './screens/InspectionDetailScreen';
@@ -65,6 +66,24 @@ const tabScreenOptions = ({ route }) => ({
   headerTitleStyle: { fontFamily: typography.bebas, fontSize: 24 },
 });
 
+function DriverLoadsStack() {
+  return (
+    <Stack.Navigator screenOptions={stackScreenOptions}>
+      <Stack.Screen name="LoadBoard" component={LoadBoardScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="LoadDetail" component={LoadDetailScreen} options={{ title: 'Load Details', headerBackTitleVisible: false }} />
+    </Stack.Navigator>
+  );
+}
+
+function AdminLoadsStack() {
+  return (
+    <Stack.Navigator screenOptions={stackScreenOptions}>
+      <Stack.Screen name="AdminLoadsList" component={AdminLoadsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="LoadDetail" component={LoadDetailScreen} options={{ title: 'Load Details', headerBackTitleVisible: false }} />
+    </Stack.Navigator>
+  );
+}
+
 function InspectionsStack() {
   return (
     <Stack.Navigator screenOptions={stackScreenOptions}>
@@ -87,7 +106,7 @@ function AdminInspectionsStack() {
 function DriverTabs() {
   return (
     <Tab.Navigator screenOptions={tabScreenOptions}>
-      <Tab.Screen name="Load Board" component={LoadBoardScreen} />
+      <Tab.Screen name="Load Board" component={DriverLoadsStack} options={{ headerShown: false }} />
       <Tab.Screen name="Inspections" component={InspectionsStack} options={{ headerShown: false }} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -97,7 +116,7 @@ function DriverTabs() {
 function AdminTabs() {
   return (
     <Tab.Navigator screenOptions={tabScreenOptions}>
-      <Tab.Screen name="All Loads" component={AdminLoadsScreen} />
+      <Tab.Screen name="All Loads" component={AdminLoadsStack} options={{ headerShown: false }} />
       <Tab.Screen name="All Inspections" component={AdminInspectionsStack} options={{ headerShown: false }} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>

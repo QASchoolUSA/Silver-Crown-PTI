@@ -39,6 +39,23 @@ export default function ProfileScreen() {
 
       <Text style={styles.email}>{profile?.email}</Text>
 
+      {profile?.role === 'driver' && (
+        <View style={styles.equipmentSection}>
+          <Text style={styles.equipmentLabel}>Authorized Equipment</Text>
+          {profile.equipmentTypes?.length ? (
+            <View style={styles.equipmentRow}>
+              {profile.equipmentTypes.map((type) => (
+                <View key={type} style={styles.equipmentBadge}>
+                  <Text style={styles.equipmentBadgeText}>{type}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.equipmentEmpty}>No equipment assigned yet</Text>
+          )}
+        </View>
+      )}
+
       <TouchableOpacity style={styles.menuBtn}>
         <Text style={styles.menuText}>Account Settings</Text>
       </TouchableOpacity>
@@ -60,7 +77,13 @@ const styles = StyleSheet.create({
   adminBadge: { backgroundColor: 'rgba(0, 180, 255, 0.2)' },
   driverBadge: { backgroundColor: colors.surfaceContainerHigh },
   roleText: { color: colors.primary, fontFamily: typography.montserratBold, fontSize: 12, letterSpacing: 1 },
-  email: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 14, marginBottom: 32 },
+  email: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 14, marginBottom: 24 },
+  equipmentSection: { width: '100%', marginBottom: 24 },
+  equipmentLabel: { color: colors.onSurfaceVariant, fontFamily: typography.montserratBold, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, textAlign: 'center' },
+  equipmentRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
+  equipmentBadge: { backgroundColor: 'rgba(137, 206, 255, 0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  equipmentBadgeText: { color: colors.primary, fontFamily: typography.montserratBold, fontSize: 12, textTransform: 'uppercase' },
+  equipmentEmpty: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 14, textAlign: 'center' },
   menuBtn: { width: '100%', backgroundColor: colors.surfaceContainer, padding: 16, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: colors.outlineVariant },
   menuText: { color: colors.onSurface, fontFamily: typography.montserratSemiBold, fontSize: 16, textAlign: 'center' },
   signOutBtn: { width: '100%', backgroundColor: colors.errorContainer, padding: 16, borderRadius: 8, marginTop: 24 },

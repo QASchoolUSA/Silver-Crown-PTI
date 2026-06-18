@@ -7,7 +7,7 @@ import LoadCard from '../components/LoadCard';
 import TopTabs from '../components/TopTabs';
 import { colors, typography } from '../theme';
 
-export default function LoadBoardScreen() {
+export default function LoadBoardScreen({ navigation }) {
   const { user, profile } = useAuth();
   const [loads, setLoads] = useState([]);
   const [activeTab, setActiveTab] = useState('Available Loads');
@@ -84,7 +84,7 @@ export default function LoadBoardScreen() {
             rightValue={activeTab === 'Available Loads' ? `${load.deadhead || '0'} mi` : load.deliveryDate || '—'}
             originCoords={load.originCoords}
             destCoords={load.destCoords}
-            onBook={() => {}}
+            onBook={() => navigation.navigate('LoadDetail', { loadId: load.id })}
           />
         ))}
         {filteredLoads.length === 0 && (

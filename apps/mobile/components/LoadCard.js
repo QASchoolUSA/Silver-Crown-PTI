@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { colors, typography } from '../theme';
 
-export default function LoadCard({ origin, destination, payout, miles, rightLabel = "Deadhead", rightValue, originCoords, destCoords, onBook }) {
+export default function LoadCard({ origin, destination, payout, miles, rightLabel = "Deadhead", rightValue, originCoords, destCoords, onBook, showActions = true }) {
   
   // Calculate region to fit both coordinates
   const getRegion = () => {
@@ -72,9 +72,11 @@ export default function LoadCard({ origin, destination, payout, miles, rightLabe
             <Text style={styles.metricValue}>{rightValue}</Text>
           </View>
         </View>
+        {showActions && (
         <TouchableOpacity style={styles.button} onPress={onBook}>
-          <Text style={styles.buttonText}>VIEW DETAILS / BOOK</Text>
+          <Text style={styles.buttonText}>VIEW DETAILS</Text>
         </TouchableOpacity>
+        )}
       </View>
     </View>
   );

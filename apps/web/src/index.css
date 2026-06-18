@@ -22,3 +22,27 @@ body {
   color: var(--color-on-surface);
   font-family: var(--font-montserrat);
 }
+
+.leaflet-container {
+  background: var(--color-surface-container-high);
+  font-family: var(--font-montserrat);
+}
+
+.leaflet-control-zoom a {
+  background: var(--color-surface-container-high) !important;
+  color: var(--color-on-surface) !important;
+  border-color: var(--color-outline-variant) !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--color-surface-container) !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(31, 31, 35, 0.85) !important;
+  color: var(--color-on-surface-variant) !important;
+}
+
+.leaflet-control-attribution a {
+  color: var(--color-primary) !important;
+}

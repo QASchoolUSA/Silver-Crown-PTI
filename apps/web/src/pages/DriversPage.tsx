@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import { getCompanyUsers } from '@silver-crown/shared';
-import type { AppUser } from '@silver-crown/shared';
+import type { AppUser, EquipmentType } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
+
+function formatEquipment(types?: EquipmentType[]) {
+  if (!types?.length) return '—';
+  return types.join(', ');
+}
 
 export default function DriversPage() {
   const { profile } = useAuth();
@@ -19,30 +25,49 @@ export default function DriversPage() {
     <div>
       <h1 className="font-[family-name:var(--font-bebas)] text-4xl tracking-wider mb-8">TEAM</h1>
 
-      <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">Drivers ({drivers.length})</h2>
+      <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">
+        Drivers ({drivers.length})
+      </h2>
       <div className="bg-surface-container border border-outline-variant rounded-lg overflow-hidden mb-8">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-outline-variant text-on-surface-variant text-xs uppercase tracking-wider">
               <th className="text-left p-4">Name</th>
               <th className="text-left p-4">Email</th>
+              <th className="text-left p-4">Equipment</th>
               <th className="text-left p-4">Joined</th>
             </tr>
           </thead>
           <tbody>
             {drivers.map((d) => (
-              <tr key={d.uid} className="border-b border-outline-variant">
-                <td className="p-4 font-semibold">{d.displayName}</td>
+              <tr key={d.uid} className="border-b border-outline-variant hover:bg-surface-container-high">
+                <td className="p-4">
+                  <Link
+                    to={`/drivers/${d.uid}`}
+                    className="font-semibold hover:text-primary transition-colors"
+                  >
+                    {d.displayName}
+                  </Link>
+                </td>
                 <td className="p-4 text-on-surface-variant">{d.email}</td>
-                <td className="p-4 text-on-surface-variant">{new Date(d.createdAt).toLocaleDateString()}</td>
+                <td className="p-4 text-on-surface-variant">{formatEquipment(d.equipmentTypes)}</td>
+                <td className="p-4 text-on-surface-variant">
+                  {new Date(d.createdAt).toLocaleDateString()}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {drivers.length === 0 && <p className="text-center text-on-surface-variant py-8">No drivers yet. Generate an invite code to add drivers.</p>}
+        {drivers.length === 0 && (
+          <p className="text-center text-on-surface-variant py-8">
+            No drivers yet. Generate an invite code to add drivers.
+          </p>
+        )}
       </div>
 
-      <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">Admins ({admins.length})</h2>
+      <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">
+        Admins ({admins.length})
+      </h2>
       <div className="bg-surface-container border border-outline-variant rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead>

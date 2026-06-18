@@ -1,6 +1,7 @@
 import * as admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
+import { fetchRouteWeatherForFunction, isValidCoords } from './nws';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -109,4 +110,32 @@ export const seedDemoData = onCall(async (request) => {
   });
 
   return { companyId, adminCode, driverCode };
+});
+
+export const getRouteWeather = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be signed in to fetch weather.');
+  }
+
+  const { originCoords, destCoords, originLabel, destLabel } = request.data as {
+    originCoords: { latitude: number; longitude: number };
+    destCoords: { latitude: number; longitude: number };
+    originLabel?: string;
+    destLabel?: string;
+  };
+
+  if (!originCoords || !destCoords) {
+    throw new HttpsError('invalid-argument', 'originCoords and destCoords are required.');
+  }
+
+  if (!isValidCoords(originCoords) || !isValidCoords(destCoords)) {
+    throw new HttpsError('invalid-argument', 'Invalid coordinates.');
+  }
+
+  return fetchRouteWeatherForFunction(
+    originLabel ?? 'Origin',
+    originCoords,
+    destLabel ?? 'Destination',
+    destCoords
+  );
 });

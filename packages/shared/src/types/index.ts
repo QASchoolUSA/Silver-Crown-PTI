@@ -6,6 +6,7 @@ export interface AppUser {
   displayName: string;
   companyId: string;
   role: UserRole;
+  equipmentTypes?: EquipmentType[];
   createdAt: string;
 }
 
@@ -96,4 +97,36 @@ export interface FirebaseEnvConfig {
 export interface FirebaseInitOptions {
   /** Pass `getReactNativePersistence(AsyncStorage)` on React Native. */
   authPersistence?: import('firebase/auth').Persistence;
+}
+
+export interface WeatherAlert {
+  id: string;
+  event: string;
+  severity: string;
+  headline: string;
+  description: string;
+  expires: string;
+}
+
+export interface WeatherPeriod {
+  name: string;
+  startTime: string;
+  temperature: number;
+  temperatureUnit: string;
+  windSpeed: string;
+  shortForecast: string;
+  isDaytime: boolean;
+}
+
+export interface LocationWeather {
+  label: string;
+  periods: WeatherPeriod[];
+  alerts: WeatherAlert[];
+  hasAdverseConditions: boolean;
+  available: boolean;
+}
+
+export interface RouteWeather {
+  origin: LocationWeather;
+  destination: LocationWeather;
 }

@@ -7,7 +7,7 @@ import LoadCard from '../components/LoadCard';
 import TopTabs from '../components/TopTabs';
 import { colors, typography } from '../theme';
 
-export default function AdminLoadsScreen() {
+export default function AdminLoadsScreen({ navigation }) {
   const { profile } = useAuth();
   const [loads, setLoads] = useState([]);
   const [drivers, setDrivers] = useState([]);
@@ -103,7 +103,7 @@ export default function AdminLoadsScreen() {
               rightValue={load.status === 'delivered' ? load.deliveryDate || '—' : `${load.deadhead || '0'} mi`}
               originCoords={load.originCoords}
               destCoords={load.destCoords}
-              onBook={() => {}}
+              onBook={() => navigation.navigate('LoadDetail', { loadId: load.id })}
             />
           </View>
         ))}

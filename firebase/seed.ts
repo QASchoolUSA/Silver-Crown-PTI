@@ -91,6 +91,7 @@ async function seed() {
     displayName: 'John Driver',
     companyId: COMPANY_ID,
     role: 'driver',
+    equipmentTypes: ['Dry Van', 'Reefer'],
     createdAt: new Date().toISOString(),
   });
 
@@ -109,6 +110,7 @@ async function seed() {
     displayName: 'Jane Driver',
     companyId: COMPANY_ID,
     role: 'driver',
+    equipmentTypes: ['Flatbed'],
     createdAt: new Date().toISOString(),
   });
 

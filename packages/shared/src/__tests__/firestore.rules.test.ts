@@ -8,7 +8,7 @@ import {
   assertSucceeds,
   RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, collection, addDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -97,6 +97,27 @@ describe('Firestore Security Rules', () => {
     await assertFails(addDoc(collection(db, 'loads'), {
       companyId: COMPANY_ID, assignedDriverId: DRIVER1_ID, origin: 'X', destination: 'Y',
       payout: '200', miles: '100', type: 'Reefer', status: 'available', createdAt: new Date().toISOString(),
+    }));
+  });
+
+  it('admin can update driver equipment', async () => {
+    const db = testEnv.authenticatedContext(ADMIN_ID).firestore();
+    await assertSucceeds(updateDoc(doc(db, 'users', DRIVER1_ID), {
+      equipmentTypes: ['Dry Van', 'Reefer'],
+    }));
+  });
+
+  it('admin cannot update driver name', async () => {
+    const db = testEnv.authenticatedContext(ADMIN_ID).firestore();
+    await assertFails(updateDoc(doc(db, 'users', DRIVER1_ID), {
+      displayName: 'Hacked Name',
+    }));
+  });
+
+  it('driver cannot update another driver equipment', async () => {
+    const db = testEnv.authenticatedContext(DRIVER1_ID).firestore();
+    await assertFails(updateDoc(doc(db, 'users', DRIVER2_ID), {
+      equipmentTypes: ['Flatbed'],
     }));
   });
 });

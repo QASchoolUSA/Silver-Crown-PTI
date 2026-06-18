@@ -33,10 +33,11 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.seedDemoData = exports.redeemInviteCode = void 0;
+exports.getRouteWeather = exports.seedDemoData = exports.redeemInviteCode = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const v2_1 = require("firebase-functions/v2");
+const nws_1 = require("./nws");
 admin.initializeApp();
 const db = admin.firestore();
 (0, v2_1.setGlobalOptions)({ maxInstances: 10 });
@@ -123,5 +124,18 @@ exports.seedDemoData = (0, https_1.onCall)(async (request) => {
         createdAt: new Date().toISOString(),
     });
     return { companyId, adminCode, driverCode };
+});
+exports.getRouteWeather = (0, https_1.onCall)(async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Must be signed in to fetch weather.');
+    }
+    const { originCoords, destCoords, originLabel, destLabel } = request.data;
+    if (!originCoords || !destCoords) {
+        throw new https_1.HttpsError('invalid-argument', 'originCoords and destCoords are required.');
+    }
+    if (!(0, nws_1.isValidCoords)(originCoords) || !(0, nws_1.isValidCoords)(destCoords)) {
+        throw new https_1.HttpsError('invalid-argument', 'Invalid coordinates.');
+    }
+    return (0, nws_1.fetchRouteWeatherForFunction)(originLabel !== null && originLabel !== void 0 ? originLabel : 'Origin', originCoords, destLabel !== null && destLabel !== void 0 ? destLabel : 'Destination', destCoords);
 });
 //# sourceMappingURL=index.js.map

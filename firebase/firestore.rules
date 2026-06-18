@@ -37,6 +37,10 @@ service cloud.firestore {
       );
       allow create: if false;
       allow update: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isAdmin()
+        && resource.data.companyId == userCompanyId()
+        && resource.data.role == 'driver'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipmentTypes']);
       allow delete: if false;
     }
 

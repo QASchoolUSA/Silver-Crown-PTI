@@ -4,10 +4,12 @@ import AdminLayout from './layouts/AdminLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LoadsPage from './pages/LoadsPage';
+import LoadDetailPage from './pages/LoadDetailPage';
 import NewLoadPage from './pages/NewLoadPage';
 import InspectionsPage from './pages/InspectionsPage';
 import InspectionDetailPage from './pages/InspectionDetailPage';
 import DriversPage from './pages/DriversPage';
+import DriverDetailPage from './pages/DriverDetailPage';
 import InviteCodesPage from './pages/InviteCodesPage';
 import './lib/firebase';
 
@@ -21,9 +23,11 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/loads" element={<LoadsPage />} />
             <Route path="/loads/new" element={<NewLoadPage />} />
+            <Route path="/loads/:id" element={<LoadDetailPage />} />
             <Route path="/inspections" element={<InspectionsPage />} />
             <Route path="/inspections/:id" element={<InspectionDetailPage />} />
             <Route path="/drivers" element={<DriversPage />} />
+            <Route path="/drivers/:id" element={<DriverDetailPage />} />
             <Route path="/invite-codes" element={<InviteCodesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

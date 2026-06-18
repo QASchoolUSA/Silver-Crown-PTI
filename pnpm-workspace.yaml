@@ -2,6 +2,10 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+overrides:
+  react: 19.2.7
+  react-dom: 19.2.7
+
 nodeLinker: hoisted
 
 allowBuilds:
