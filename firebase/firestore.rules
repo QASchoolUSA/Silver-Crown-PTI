@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isUser() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userCompanyId() {
+      return userDoc().data.companyId;
+    }
+
+    function userRole() {
+      return userDoc().data.role;
+    }
+
+    function isAdmin() {
+      return isUser() && userRole() == 'admin';
+    }
+
+    function isDriver() {
+      return isUser() && userRole() == 'driver';
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        (isAdmin() && resource.data.companyId == userCompanyId())
+      );
+      allow create: if false;
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    match /companies/{companyId} {
+      allow read: if isUser() && userCompanyId() == companyId;
+      allow write: if false;
+
+      match /inviteCodes/{codeId} {
+        allow read: if isAdmin() && userCompanyId() == companyId;
+        allow create: if isAdmin() && userCompanyId() == companyId;
+        allow update, delete: if false;
+      }
+    }
+
+    match /loads/{loadId} {
+      allow read: if isUser() && resource.data.companyId == userCompanyId() && isAdmin();
+      allow read: if isUser() && resource.data.companyId == userCompanyId()
+        && isDriver() && resource.data.assignedDriverId == request.auth.uid;
+      allow create: if isAdmin() && request.resource.data.companyId == userCompanyId();
+      allow update: if isAdmin() && resource.data.companyId == userCompanyId();
+      allow delete: if isAdmin() && resource.data.companyId == userCompanyId();
+    }
+
+    match /inspections/{inspectionId} {
+      allow read: if isUser() && resource.data.companyId == userCompanyId() && isAdmin();
+      allow read: if isUser() && resource.data.companyId == userCompanyId()
+        && isDriver() && resource.data.driverId == request.auth.uid;
+      allow create: if isDriver()
+        && request.resource.data.companyId == userCompanyId()
+        && request.resource.data.driverId == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
