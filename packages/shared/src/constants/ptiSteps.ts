@@ -39,11 +39,14 @@ export function buildInspectionSections(data: InspectionDataMap) {
     type: step.type,
     items: step.items.map((name) => {
       const itemData = data[step.id]?.[name] || { status: null, notes: '' };
-      return {
+      const item: { name: string; status: typeof itemData.status; notes?: string } = {
         name,
         status: itemData.status,
-        notes: itemData.notes || undefined,
       };
+      if (itemData.notes) {
+        item.notes = itemData.notes;
+      }
+      return item;
     }),
   }));
 }

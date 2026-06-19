@@ -3,6 +3,7 @@ import {
   doc,
   addDoc,
   updateDoc,
+  deleteDoc,
   getDoc,
   getDocs,
   query,
@@ -11,8 +12,8 @@ import {
   onSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getFirebaseDb, getFirebaseStorage } from './config';
+import { getFirebaseDb } from './config';
+import { type StorageUploader, uploadStorageBase64, uploadStorageFile } from './storageUpload';
 import type { Inspection, InspectionSection, InspectionStatus } from '../types';
 
 function mapInspection(id: string, data: Record<string, unknown>): Inspection {
@@ -101,38 +102,20 @@ export function subscribeCompanyInspections(
   );
 }
 
-async function uploadPhoto(
-  companyId: string,
-  inspectionId: string,
-  itemKey: string,
-  uri: string,
-  fetchBlob: (uri: string) => Promise<Blob>
-): Promise<string> {
-  const blob = await fetchBlob(uri);
-  const storageRef = ref(
-    getFirebaseStorage(),
-    `companies/${companyId}/inspections/${inspectionId}/photos/${itemKey.replace(/::/g, '_')}.jpg`
-  );
-  await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-  return getDownloadURL(storageRef);
+function sanitizePhotoFileName(itemKey: string): string {
+  return itemKey.replace(/::/g, '_').replace(/[^\w.-]+/g, '_');
 }
 
-async function uploadSignature(
-  companyId: string,
-  inspectionId: string,
-  signatureBase64: string
-): Promise<string> {
-  const base64Data = signatureBase64.replace(/^data:image\/\w+;base64,/, '');
-  const binary = atob(base64Data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+function inspectionStorageBase(companyId: string, driverId: string, inspectionId: string): string {
+  return `companies/${companyId}/drivers/${driverId}/inspections/${inspectionId}`;
+}
 
-  const storageRef = ref(
-    getFirebaseStorage(),
-    `companies/${companyId}/inspections/${inspectionId}/signature.png`
-  );
-  await uploadBytes(storageRef, bytes, { contentType: 'image/png' });
-  return getDownloadURL(storageRef);
+function photoStoragePath(companyId: string, driverId: string, inspectionId: string, itemKey: string): string {
+  return `${inspectionStorageBase(companyId, driverId, inspectionId)}/photos/${sanitizePhotoFileName(itemKey)}.jpg`;
+}
+
+function signatureStoragePath(companyId: string, driverId: string, inspectionId: string): string {
+  return `${inspectionStorageBase(companyId, driverId, inspectionId)}/signature.png`;
 }
 
 export interface CreateInspectionInput {
@@ -145,45 +128,78 @@ export interface CreateInspectionInput {
   sections: InspectionSection[];
   signatureBase64: string;
   photoUris: Record<string, string>;
-  fetchBlob: (uri: string) => Promise<Blob>;
+  storageUploader: StorageUploader;
+}
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripUndefined(entry)) as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefined(v)])
+    ) as T;
+  }
+  return value;
 }
 
 export async function createInspection(input: CreateInspectionInput): Promise<string> {
-  const docRef = await addDoc(collection(getFirebaseDb(), 'inspections'), {
-    companyId: input.companyId,
-    driverId: input.driverId,
-    driverName: input.driverName,
-    truckNumber: input.truckNumber,
-    trailerNumber: input.trailerNumber,
-    status: input.status,
-    sections: input.sections,
-    createdAt: new Date().toISOString(),
-  });
+  const docRef = await addDoc(
+    collection(getFirebaseDb(), 'inspections'),
+    stripUndefined({
+      companyId: input.companyId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      truckNumber: input.truckNumber,
+      trailerNumber: input.trailerNumber,
+      status: input.status,
+      sections: input.sections,
+      createdAt: new Date().toISOString(),
+    })
+  );
 
   const inspectionId = docRef.id;
+  const uploadContext = { companyId: input.companyId, driverId: input.driverId };
   const updatedSections = input.sections.map((section) => ({
     ...section,
     items: section.items.map((item) => ({ ...item })),
   }));
 
-  for (const [key, uri] of Object.entries(input.photoUris)) {
-    const photoUrl = await uploadPhoto(input.companyId, inspectionId, key, uri, input.fetchBlob);
-    const [sectionId, itemName] = key.split('::');
-    const section = updatedSections.find((s) => s.id === sectionId);
-    if (section) {
-      const item = section.items.find((i) => i.name === itemName);
-      if (item) item.photoUrl = photoUrl;
+  try {
+    for (const [key, uri] of Object.entries(input.photoUris)) {
+      const path = photoStoragePath(input.companyId, input.driverId, inspectionId, key);
+      const photoUrl = await uploadStorageFile(path, uri, 'image/jpeg', input.storageUploader, uploadContext);
+      const [sectionId, itemName] = key.split('::');
+      const section = updatedSections.find((s) => s.id === sectionId);
+      if (section) {
+        const item = section.items.find((i) => i.name === itemName);
+        if (item) item.photoUrl = photoUrl;
+      }
     }
+
+    const signatureUrl = await uploadStorageBase64(
+      signatureStoragePath(input.companyId, input.driverId, inspectionId),
+      input.signatureBase64,
+      'image/png',
+      input.storageUploader,
+      uploadContext
+    );
+
+    await updateDoc(
+      doc(getFirebaseDb(), 'inspections', inspectionId),
+      stripUndefined({
+        sections: updatedSections,
+        signatureUrl,
+      })
+    );
+
+    return inspectionId;
+  } catch (error) {
+    await deleteDoc(doc(getFirebaseDb(), 'inspections', inspectionId)).catch(() => undefined);
+    throw error;
   }
-
-  const signatureUrl = await uploadSignature(input.companyId, inspectionId, input.signatureBase64);
-
-  await updateDoc(doc(getFirebaseDb(), 'inspections', inspectionId), {
-    sections: updatedSections,
-    signatureUrl,
-  });
-
-  return inspectionId;
 }
 
 export function formatInspectionDate(isoDate: string): string {

@@ -37,5 +37,17 @@ describe('buildInspectionSections', () => {
     expect(sections.length).toBeGreaterThan(0);
     const engine = sections.find((s) => s.id === 'engine');
     expect(engine?.items.find((i) => i.name === 'Oil Level')?.status).toBe('pass');
+    expect(engine?.items.find((i) => i.name === 'Coolant Level')?.notes).toBeUndefined();
+  });
+
+  it('omits notes field when empty so Firestore writes stay valid', () => {
+    const sections = buildInspectionSections({
+      engine: {
+        'Oil Level': { status: 'pass', notes: '' },
+      },
+    });
+    const item = sections.find((s) => s.id === 'engine')?.items.find((i) => i.name === 'Oil Level');
+    expect(item).toBeDefined();
+    expect('notes' in item!).toBe(false);
   });
 });

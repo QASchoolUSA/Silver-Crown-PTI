@@ -2,7 +2,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/packages/shared/src'],
+  roots: ['<rootDir>/packages/shared/src', '<rootDir>/firebase/functions/src'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   testPathIgnorePatterns: ['/node_modules/', 'firestore.rules.test.ts'],
   moduleNameMapper: {

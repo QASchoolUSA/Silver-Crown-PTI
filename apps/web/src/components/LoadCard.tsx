@@ -26,6 +26,7 @@ export default function LoadCard({ load }: LoadCardProps) {
       className="block bg-surface-container border border-outline-variant rounded-lg overflow-hidden hover:border-primary transition-colors group"
     >
       <LoadRouteMap
+        stops={load.stops}
         originCoords={load.originCoords}
         destCoords={load.destCoords}
         height="140px"

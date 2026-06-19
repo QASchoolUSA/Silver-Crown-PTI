@@ -6,9 +6,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
+  Linking,
+  Alert,
 } from 'react-native';
 import { AlertTriangle } from 'lucide-react-native';
-import { getLoadById, getRouteWeather } from '@silver-crown/shared';
+import { getLoadById, getRouteWeather, getOrderedStops, buildGoogleMapsDirectionsUrl, buildAppleMapsDirectionsUrl } from '@silver-crown/shared';
 import LoadCard from '../components/LoadCard';
 import { colors, typography } from '../theme';
 
@@ -143,6 +146,24 @@ export default function LoadDetailScreen({ route }) {
         : '—'
       : `${load.deadhead || '0'} mi`;
 
+  const orderedStops = getOrderedStops(load);
+  const googleMapsUrl = buildGoogleMapsDirectionsUrl(orderedStops);
+  const appleMapsUrl = buildAppleMapsDirectionsUrl(orderedStops);
+
+  const openMaps = async (url, label) => {
+    if (!url) return;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert('Unavailable', `${label} is not available on this device.`);
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Error', `Could not open ${label}.`);
+    }
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -158,10 +179,41 @@ export default function LoadDetailScreen({ route }) {
         miles={load.miles}
         rightLabel={rightLabel}
         rightValue={rightValue}
+        stops={orderedStops}
         originCoords={load.originCoords}
         destCoords={load.destCoords}
         showActions={false}
       />
+
+      <Text style={styles.sectionTitle}>Stops</Text>
+      <View style={styles.stopsList}>
+        {orderedStops.map((stop, index) => (
+          <View key={`${stop.type}-${stop.sequence}-${index}`} style={styles.stopRow}>
+            <View style={[styles.stopDot, stop.type === 'dropoff' && styles.stopDotDropoff]} />
+            <View style={styles.stopInfo}>
+              <Text style={styles.stopType}>
+                {stop.type === 'pickup' ? 'Pickup' : 'Drop-off'} {stop.sequence + 1}
+              </Text>
+              <Text style={styles.stopAddress}>{stop.address}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {(googleMapsUrl || appleMapsUrl) && (
+        <View style={styles.mapsActions}>
+          {googleMapsUrl && (
+            <TouchableOpacity style={styles.mapsButton} onPress={() => openMaps(googleMapsUrl, 'Google Maps')}>
+              <Text style={styles.mapsButtonText}>Open in Google Maps</Text>
+            </TouchableOpacity>
+          )}
+          {appleMapsUrl && (
+            <TouchableOpacity style={[styles.mapsButton, styles.mapsButtonSecondary]} onPress={() => openMaps(appleMapsUrl, 'Apple Maps')}>
+              <Text style={styles.mapsButtonTextSecondary}>Open in Apple Maps</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {load.assignedDriverName && (
         <Text style={styles.driverLabel}>Driver: {load.assignedDriverName}</Text>
@@ -220,6 +272,76 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 12,
+    marginTop: 8,
+  },
+  stopsList: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  stopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    padding: 12,
+  },
+  stopDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+  stopDotDropoff: {
+    backgroundColor: colors.primary,
+  },
+  stopInfo: {
+    flex: 1,
+  },
+  stopType: {
+    color: colors.onSurface,
+    fontFamily: typography.montserratBold,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  stopAddress: {
+    color: colors.onSurfaceVariant,
+    fontFamily: typography.montserrat,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  mapsActions: {
+    gap: 10,
+    marginBottom: 20,
+  },
+  mapsButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 4,
+    alignItems: 'center',
+  },
+  mapsButtonSecondary: {
+    backgroundColor: colors.surfaceContainerHigh,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  mapsButtonTextSecondary: {
+    color: colors.onSurface,
+    fontFamily: typography.montserratBold,
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  mapsButtonText: {
+    color: colors.onPrimary,
+    fontFamily: typography.montserratBold,
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   weatherSpinner: { marginBottom: 16 },
   banner: {

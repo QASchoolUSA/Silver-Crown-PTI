@@ -2,6 +2,7 @@ import * as admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { fetchRouteWeatherForFunction, isValidCoords } from './nws';
+import { geocodeSearch } from './geocode';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -138,4 +139,34 @@ export const getRouteWeather = onCall(async (request) => {
     destLabel ?? 'Destination',
     destCoords
   );
+});
+
+async function requireAdmin(uid: string): Promise<void> {
+  const userSnap = await db.collection('users').doc(uid).get();
+  if (!userSnap.exists || userSnap.data()?.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Admin access required.');
+  }
+}
+
+export const geocodeAddress = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Must be signed in to geocode addresses.');
+  }
+
+  await requireAdmin(request.auth.uid);
+
+  const { query } = request.data as { query?: string };
+  if (!query || typeof query !== 'string' || query.trim().length < 3) {
+    throw new HttpsError('invalid-argument', 'Query must be at least 3 characters.');
+  }
+
+  try {
+    const results = await geocodeSearch(query);
+    return { results };
+  } catch (error) {
+    throw new HttpsError(
+      'internal',
+      error instanceof Error ? error.message : 'Geocoding failed.'
+    );
+  }
 });

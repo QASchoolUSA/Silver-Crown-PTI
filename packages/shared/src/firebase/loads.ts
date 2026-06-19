@@ -12,23 +12,26 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { getFirebaseDb } from './config';
-import type { Load, LoadStatus, EquipmentType } from '../types';
+import { deriveLegacyFieldsFromStops, normalizeLoadFromFirestore } from '../utils/loadStops';
+import type { Load, LoadStatus, EquipmentType, LoadStop } from '../types';
 
 function mapLoad(id: string, data: Record<string, unknown>): Load {
+  const normalized = normalizeLoadFromFirestore(data);
   return {
     id,
     companyId: data.companyId as string,
     assignedDriverId: (data.assignedDriverId as string) || null,
     assignedDriverName: data.assignedDriverName as string | undefined,
-    origin: data.origin as string,
-    destination: data.destination as string,
+    origin: normalized.origin,
+    destination: normalized.destination,
     payout: data.payout as string,
     miles: data.miles as string,
     deadhead: data.deadhead as string | undefined,
     type: data.type as EquipmentType,
     status: data.status as LoadStatus,
-    originCoords: data.originCoords as Load['originCoords'],
-    destCoords: data.destCoords as Load['destCoords'],
+    originCoords: normalized.originCoords,
+    destCoords: normalized.destCoords,
+    stops: normalized.stops,
     deliveryDate: data.deliveryDate as string | undefined,
     createdAt: data.createdAt as string,
   };
@@ -120,21 +123,29 @@ export interface CreateLoadInput {
   companyId: string;
   assignedDriverId?: string | null;
   assignedDriverName?: string;
-  origin: string;
-  destination: string;
+  stops: LoadStop[];
   payout: string;
   miles: string;
   deadhead?: string;
   type: EquipmentType;
   status?: LoadStatus;
-  originCoords: Load['originCoords'];
-  destCoords: Load['destCoords'];
 }
 
 export async function createLoad(input: CreateLoadInput): Promise<string> {
+  const legacy = deriveLegacyFieldsFromStops(input.stops);
   const ref = await addDoc(collection(getFirebaseDb(), 'loads'), {
-    ...input,
+    companyId: input.companyId,
     assignedDriverId: input.assignedDriverId || null,
+    assignedDriverName: input.assignedDriverName,
+    stops: input.stops,
+    origin: legacy.origin,
+    destination: legacy.destination,
+    originCoords: legacy.originCoords,
+    destCoords: legacy.destCoords,
+    payout: input.payout,
+    miles: input.miles,
+    deadhead: input.deadhead,
+    type: input.type,
     status: input.status || 'available',
     createdAt: new Date().toISOString(),
   });

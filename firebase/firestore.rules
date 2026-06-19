@@ -71,8 +71,14 @@ service cloud.firestore {
       allow create: if isDriver()
         && request.resource.data.companyId == userCompanyId()
         && request.resource.data.driverId == request.auth.uid;
-      allow update: if false;
-      allow delete: if false;
+      allow update: if isDriver()
+        && resource.data.companyId == userCompanyId()
+        && resource.data.driverId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sections', 'signatureUrl']);
+      allow delete: if isDriver()
+        && resource.data.companyId == userCompanyId()
+        && resource.data.driverId == request.auth.uid
+        && !('signatureUrl' in resource.data);
     }
   }
 }

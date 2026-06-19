@@ -11,6 +11,7 @@ import {
   createInspection,
 } from '@silver-crown/shared';
 import { compressImageUri } from '../lib/imageUtils';
+import { mobileStorageUploader } from '../lib/storageUpload';
 import { useAuth } from '../context/AuthContext';
 import InspectionRow from '../components/InspectionRow';
 import SignatureModal from '../components/SignatureModal';
@@ -95,11 +96,6 @@ export default function NewPTIScreen({ navigation }) {
     setIsSignatureVisible(true);
   };
 
-  const fetchBlob = async (uri) => {
-    const response = await fetch(uri);
-    return response.blob();
-  };
-
   const handleSign = async (signatureBase64) => {
     setIsSignatureVisible(false);
     setSubmitting(true);
@@ -127,7 +123,7 @@ export default function NewPTIScreen({ navigation }) {
         sections,
         signatureBase64,
         photoUris,
-        fetchBlob,
+        storageUploader: mobileStorageUploader,
       });
 
       await AsyncStorage.removeItem('@pti_draft');

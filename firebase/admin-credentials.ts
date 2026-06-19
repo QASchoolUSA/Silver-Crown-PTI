@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import * as admin from 'firebase-admin';
@@ -7,18 +6,6 @@ const SERVICE_ACCOUNT_PATHS = [
   process.env.GOOGLE_APPLICATION_CREDENTIALS,
   path.resolve(__dirname, 'service-account.json'),
 ].filter((value): value is string => Boolean(value));
-
-function gcloudAccessToken(): string | null {
-  try {
-    const token = execSync('gcloud auth print-access-token', {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    return token || null;
-  } catch {
-    return null;
-  }
-}
 
 function loadServiceAccountCredential() {
   for (const filePath of SERVICE_ACCOUNT_PATHS) {
@@ -48,20 +35,6 @@ export function initAdminApp(projectId: string) {
   const serviceAccount = loadServiceAccountCredential();
   if (serviceAccount) {
     admin.initializeApp({ credential: serviceAccount, projectId });
-    return;
-  }
-
-  const gcloudToken = gcloudAccessToken();
-  if (gcloudToken) {
-    admin.initializeApp({
-      projectId,
-      credential: {
-        getAccessToken: async () => ({
-          access_token: gcloudToken,
-          expires_in: 3600,
-        }),
-      },
-    });
     return;
   }
 

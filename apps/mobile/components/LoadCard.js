@@ -1,34 +1,53 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { getRoutePolyline, getOrderedStops } from '@silver-crown/shared';
 import { colors, typography } from '../theme';
 
-export default function LoadCard({ origin, destination, payout, miles, rightLabel = "Deadhead", rightValue, originCoords, destCoords, onBook, showActions = true }) {
-  
-  // Calculate region to fit both coordinates
-  const getRegion = () => {
-    if (!originCoords || !destCoords) return null;
-    const minLat = Math.min(originCoords.latitude, destCoords.latitude);
-    const maxLat = Math.max(originCoords.latitude, destCoords.latitude);
-    const minLng = Math.min(originCoords.longitude, destCoords.longitude);
-    const maxLng = Math.max(originCoords.longitude, destCoords.longitude);
+function getRegionFromCoords(coordsList) {
+  if (!coordsList || coordsList.length === 0) return null;
 
-    const latDelta = (maxLat - minLat) * 1.5 || 0.1;
-    const lngDelta = (maxLng - minLng) * 1.5 || 0.1;
+  const lats = coordsList.map((c) => c.latitude);
+  const lngs = coordsList.map((c) => c.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
 
-    return {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: latDelta,
-      longitudeDelta: lngDelta,
-    };
+  const latDelta = Math.max((maxLat - minLat) * 1.5, 0.08);
+  const lngDelta = Math.max((maxLng - minLng) * 1.5, 0.08);
+
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: latDelta,
+    longitudeDelta: lngDelta,
   };
+}
 
-  const region = getRegion();
+export default function LoadCard({
+  origin,
+  destination,
+  payout,
+  miles,
+  rightLabel = 'Deadhead',
+  rightValue,
+  stops,
+  originCoords,
+  destCoords,
+  onBook,
+  showActions = true,
+}) {
+  const orderedStops = stops?.length ? getOrderedStops({ stops }) : null;
+  const routeCoords = orderedStops?.length
+    ? orderedStops.map((s) => s.coords)
+    : getRoutePolyline({ stops, originCoords, destCoords });
+
+  const region = getRegionFromCoords(routeCoords);
 
   return (
     <View style={styles.card}>
-      {region && (
+      {region && routeCoords.length >= 2 && (
         <View style={styles.mapContainer}>
           <MapView
             style={styles.map}
@@ -37,16 +56,25 @@ export default function LoadCard({ origin, destination, payout, miles, rightLabe
             zoomEnabled={false}
             pitchEnabled={false}
             rotateEnabled={false}
-            userInterfaceStyle="dark" // Forces Apple Maps dark mode
+            userInterfaceStyle="dark"
             mapType="standard"
           >
-            <Marker coordinate={originCoords} pinColor={colors.onSurfaceVariant} title="Origin" />
-            <Marker coordinate={destCoords} pinColor={colors.primary} title="Destination" />
-            <Polyline 
-              coordinates={[originCoords, destCoords]} 
-              strokeColor={colors.primary} 
-              strokeWidth={3} 
-              geodesic={true}
+            {(orderedStops ?? [
+              { type: 'pickup', coords: routeCoords[0], sequence: 0 },
+              { type: 'dropoff', coords: routeCoords[routeCoords.length - 1], sequence: 0 },
+            ]).map((stop, index) => (
+              <Marker
+                key={`${stop.type}-${stop.sequence}-${index}`}
+                coordinate={stop.coords || routeCoords[index]}
+                pinColor={stop.type === 'dropoff' ? colors.primary : colors.onSurfaceVariant}
+                title={stop.type === 'pickup' ? 'Pickup' : 'Drop-off'}
+              />
+            ))}
+            <Polyline
+              coordinates={routeCoords}
+              strokeColor={colors.primary}
+              strokeWidth={3}
+              geodesic
             />
           </MapView>
         </View>
@@ -73,9 +101,9 @@ export default function LoadCard({ origin, destination, payout, miles, rightLabe
           </View>
         </View>
         {showActions && (
-        <TouchableOpacity style={styles.button} onPress={onBook}>
-          <Text style={styles.buttonText}>VIEW DETAILS</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={onBook}>
+            <Text style={styles.buttonText}>VIEW DETAILS</Text>
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -89,10 +117,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.outlineVariant,
-    overflow: 'hidden', // Ensures map doesn't spill out of rounded corners
+    overflow: 'hidden',
   },
   mapContainer: {
-    height: 120, // Reduced height for the map snippet
+    height: 120,
     width: '100%',
     backgroundColor: colors.surfaceContainerHigh,
   },

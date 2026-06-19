@@ -24,6 +24,15 @@ export interface Coords {
   longitude: number;
 }
 
+export type StopType = 'pickup' | 'dropoff';
+
+export interface LoadStop {
+  type: StopType;
+  address: string;
+  coords: Coords;
+  sequence: number;
+}
+
 export interface Load {
   id: string;
   companyId: string;
@@ -38,6 +47,7 @@ export interface Load {
   status: LoadStatus;
   originCoords: Coords;
   destCoords: Coords;
+  stops?: LoadStop[];
   deliveryDate?: string;
   createdAt: string;
 }

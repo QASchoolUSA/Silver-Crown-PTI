@@ -6,6 +6,8 @@ import {
   getCompanyDrivers,
   assignLoadToDriver,
   updateLoadStatus,
+  getOrderedStops,
+  buildGoogleMapsDirectionsUrl,
 } from '@silver-crown/shared';
 import type { Load, AppUser, LoadStatus } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
@@ -120,20 +122,38 @@ export default function LoadDetailPage() {
 
       <div className="rounded-lg overflow-hidden border border-outline-variant mb-6">
         <LoadRouteMap
+          stops={load.stops}
           originCoords={load.originCoords}
           destCoords={load.destCoords}
           height="360px"
           interactive
         />
-        <div className="flex items-center justify-between px-4 py-2 bg-surface-container-high text-xs text-on-surface-variant">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-on-surface-variant" />
-            Origin — {load.origin}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary" />
-            Destination — {load.destination}
-          </span>
+        <div className="px-4 py-3 bg-surface-container-high text-xs text-on-surface-variant space-y-2">
+          {getOrderedStops(load).map((stop, index) => (
+            <div key={`${stop.type}-${stop.sequence}-${index}`} className="flex items-start gap-2">
+              <span
+                className={`shrink-0 mt-0.5 inline-block w-2.5 h-2.5 rounded-full ${
+                  stop.type === 'pickup' ? 'bg-on-surface-variant' : 'bg-primary'
+                }`}
+              />
+              <div>
+                <p className="font-bold uppercase tracking-wide text-on-surface">
+                  {stop.type === 'pickup' ? 'Pickup' : 'Drop-off'} {stop.sequence + 1}
+                </p>
+                <p>{stop.address}</p>
+              </div>
+            </div>
+          ))}
+          {buildGoogleMapsDirectionsUrl(getOrderedStops(load)) && (
+            <a
+              href={buildGoogleMapsDirectionsUrl(getOrderedStops(load))!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block mt-2 text-primary font-bold uppercase tracking-wider hover:underline"
+            >
+              Open in Google Maps
+            </a>
+          )}
         </div>
       </div>
 

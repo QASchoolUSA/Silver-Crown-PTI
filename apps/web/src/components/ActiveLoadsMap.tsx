@@ -2,15 +2,16 @@ import { useEffect, Fragment } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { Link } from 'react-router';
 import L from 'leaflet';
-import type { Load } from '@silver-crown/shared';
+import type { Load, LoadStop } from '@silver-crown/shared';
+import { getOrderedStops, getRoutePolyline } from '@silver-crown/shared';
 import {
   DARK_TILES,
+  MAP_ATTRIBUTION,
   toLatLng,
-  originIcon,
-  destIcon,
   ROUTE_COLORS,
   collectRoutePoints,
   hasMapCoords,
+  getStopIcon,
 } from '../lib/mapUtils';
 import 'leaflet/dist/leaflet.css';
 
@@ -73,17 +74,20 @@ export default function ActiveLoadsMap({ loads, height = '420px' }: ActiveLoadsM
   return (
     <div className="rounded-lg overflow-hidden border border-outline-variant">
       <div style={{ height }}>
-        <MapContainer
-          center={defaultCenter}
-          zoom={4}
-          style={{ height: '100%', width: '100%' }}
-        >
-          <TileLayer url={DARK_TILES} attribution='&copy; <a href="https://carto.com/">CARTO</a>' />
+        <MapContainer center={defaultCenter} zoom={4} style={{ height: '100%', width: '100%' }}>
+          <TileLayer url={DARK_TILES} attribution={MAP_ATTRIBUTION} />
           <FitBounds points={points} />
 
           {mappableLoads.map((load) => {
-            const origin = toLatLng(load.originCoords!);
-            const dest = toLatLng(load.destCoords!);
+            const orderedStops: LoadStop[] = load.stops?.length
+              ? getOrderedStops(load)
+              : getRoutePolyline(load).map((coords, index, arr) => ({
+                  type: (index === 0 ? 'pickup' : 'dropoff') as LoadStop['type'],
+                  address: index === 0 ? load.origin : load.destination,
+                  coords,
+                  sequence: index === 0 ? 0 : arr.length - 1,
+                }));
+            const latLngs = orderedStops.map((s) => toLatLng(s.coords));
             const routeColor = ROUTE_COLORS[load.status as keyof typeof ROUTE_COLORS] ?? ROUTE_COLORS.available;
 
             const popup = (
@@ -111,15 +115,18 @@ export default function ActiveLoadsMap({ loads, height = '420px' }: ActiveLoadsM
             return (
               <Fragment key={load.id}>
                 <Polyline
-                  positions={[origin, dest]}
+                  positions={latLngs}
                   pathOptions={{ color: routeColor, weight: 3, opacity: 0.85 }}
                 />
-                <Marker position={origin} icon={originIcon}>
-                  {popup}
-                </Marker>
-                <Marker position={dest} icon={destIcon}>
-                  {popup}
-                </Marker>
+                {orderedStops.map((stop, index) => (
+                  <Marker
+                    key={`${load.id}-${stop.type}-${index}`}
+                    position={toLatLng(stop.coords)}
+                    icon={getStopIcon(stop)}
+                  >
+                    {index === 0 ? popup : null}
+                  </Marker>
+                ))}
               </Fragment>
             );
           })}
@@ -129,19 +136,11 @@ export default function ActiveLoadsMap({ loads, height = '420px' }: ActiveLoadsM
       <div className="flex flex-wrap items-center gap-4 px-4 py-2 bg-surface-container-high text-xs text-on-surface-variant">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-full bg-on-surface-variant" />
-          Origin
+          Pickup
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary" />
-          Destination
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-0.5 bg-primary rounded" />
-          Available
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-0.5 bg-amber-400 rounded" />
-          In Transit
+          Drop-off
         </span>
         <span className="ml-auto">{mappableLoads.length} load{mappableLoads.length !== 1 ? 's' : ''} on map</span>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { Search } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Search, Plus } from 'lucide-react-native';
 import { subscribeCompanyLoads, getCompanyDrivers } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
 import LoadCard from '../components/LoadCard';
@@ -38,7 +39,7 @@ export default function AdminLoadsScreen({ navigation }) {
   });
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TopTabs tabs={['All Loads', 'Active', 'Delivered']} activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -101,6 +102,7 @@ export default function AdminLoadsScreen({ navigation }) {
               miles={load.miles}
               rightLabel={load.status === 'delivered' ? 'Delivery' : 'Deadhead'}
               rightValue={load.status === 'delivered' ? load.deliveryDate || '—' : `${load.deadhead || '0'} mi`}
+              stops={load.stops}
               originCoords={load.originCoords}
               destCoords={load.destCoords}
               onBook={() => navigation.navigate('LoadDetail', { loadId: load.id })}
@@ -113,7 +115,12 @@ export default function AdminLoadsScreen({ navigation }) {
           </View>
         )}
       </ScrollView>
-    </View>
+
+      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('NewLoad')}>
+        <Plus color={colors.surface} size={24} />
+        <Text style={styles.fabText}>New Load</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
   );
 }
 
@@ -133,8 +140,33 @@ const styles = StyleSheet.create({
   filterChipTextActive: { color: colors.onPrimary },
   filterChipTextInactive: { color: colors.onSurfaceVariant },
   feed: { flex: 1, padding: 16 },
-  feedContent: { paddingBottom: 40 },
+  feedContent: { paddingBottom: 100 },
   driverLabel: { color: colors.primary, fontFamily: typography.montserratSemiBold, fontSize: 12, marginBottom: 4, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 40 },
   emptyText: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 16 },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    left: 16,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  fabText: {
+    color: colors.surface,
+    fontFamily: typography.montserratBold,
+    fontSize: 14,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
 });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search } from 'lucide-react-native';
 import { subscribeDriverLoads } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
@@ -34,7 +35,7 @@ export default function LoadBoardScreen({ navigation }) {
   });
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TopTabs tabs={['Available Loads', 'Past Loads']} activeTab={activeTab} onTabChange={setActiveTab} />
 
@@ -82,6 +83,7 @@ export default function LoadBoardScreen({ navigation }) {
             miles={load.miles}
             rightLabel={activeTab === 'Available Loads' ? 'Deadhead' : 'Delivery'}
             rightValue={activeTab === 'Available Loads' ? `${load.deadhead || '0'} mi` : load.deliveryDate || '—'}
+            stops={load.stops}
             originCoords={load.originCoords}
             destCoords={load.destCoords}
             onBook={() => navigation.navigate('LoadDetail', { loadId: load.id })}
@@ -93,7 +95,7 @@ export default function LoadBoardScreen({ navigation }) {
           </View>
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

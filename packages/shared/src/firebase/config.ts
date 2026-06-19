@@ -11,6 +11,8 @@ let db: Firestore;
 let storage: FirebaseStorage;
 let functions: Functions;
 let emulatorsConnected = false;
+let storageUsesEmulators = false;
+let storageBucket = '';
 
 export function initFirebase(config: FirebaseEnvConfig, options?: FirebaseInitOptions) {
   if (!getApps().length) {
@@ -43,6 +45,8 @@ export function initFirebase(config: FirebaseEnvConfig, options?: FirebaseInitOp
   db = getFirestore(app);
   storage = getStorage(app);
   functions = getFunctions(app);
+  storageBucket = config.storageBucket;
+  storageUsesEmulators = !!config.useEmulators;
 
   if (config.useEmulators && !emulatorsConnected) {
     connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
@@ -68,6 +72,15 @@ export function getFirebaseDb() {
 export function getFirebaseStorage() {
   if (!storage) throw new Error('Firebase not initialized. Call initFirebase first.');
   return storage;
+}
+
+export function getStorageBucketName() {
+  if (!storageBucket) throw new Error('Firebase not initialized. Call initFirebase first.');
+  return storageBucket;
+}
+
+export function getStorageUsesEmulators() {
+  return storageUsesEmulators;
 }
 
 export function getFirebaseFunctions() {

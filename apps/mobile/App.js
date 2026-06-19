@@ -15,6 +15,7 @@ import SignUpScreen from './screens/SignUpScreen';
 import AuthLoadingScreen from './screens/AuthLoadingScreen';
 import LoadBoardScreen from './screens/LoadBoardScreen';
 import AdminLoadsScreen from './screens/AdminLoadsScreen';
+import NewLoadScreen from './screens/NewLoadScreen';
 import LoadDetailScreen from './screens/LoadDetailScreen';
 import InspectionsScreen from './screens/InspectionsScreen';
 import AdminInspectionsScreen from './screens/AdminInspectionsScreen';
@@ -79,6 +80,7 @@ function AdminLoadsStack() {
   return (
     <Stack.Navigator screenOptions={stackScreenOptions}>
       <Stack.Screen name="AdminLoadsList" component={AdminLoadsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="NewLoad" component={NewLoadScreen} options={{ title: 'New Load', headerBackTitleVisible: false }} />
       <Stack.Screen name="LoadDetail" component={LoadDetailScreen} options={{ title: 'Load Details', headerBackTitleVisible: false }} />
     </Stack.Navigator>
   );

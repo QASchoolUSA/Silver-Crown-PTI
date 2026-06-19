@@ -5,6 +5,7 @@
   "packageManager": "pnpm@11.5.0",
   "scripts": {
     "dev:mobile": "pnpm --filter @silver-crown/mobile start",
+    "expo": "pnpm --filter @silver-crown/mobile exec expo",
     "dev:web": "pnpm --filter @silver-crown/web dev",
     "build:web": "pnpm --filter @silver-crown/web build",
     "test": "npx jest",
@@ -16,8 +17,8 @@
     "lint": "pnpm -r lint"
   },
   "overrides": {
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",

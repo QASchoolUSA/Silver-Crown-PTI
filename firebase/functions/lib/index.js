@@ -33,11 +33,12 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRouteWeather = exports.seedDemoData = exports.redeemInviteCode = void 0;
+exports.geocodeAddress = exports.getRouteWeather = exports.seedDemoData = exports.redeemInviteCode = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const v2_1 = require("firebase-functions/v2");
 const nws_1 = require("./nws");
+const geocode_1 = require("./geocode");
 admin.initializeApp();
 const db = admin.firestore();
 (0, v2_1.setGlobalOptions)({ maxInstances: 10 });
@@ -137,5 +138,29 @@ exports.getRouteWeather = (0, https_1.onCall)(async (request) => {
         throw new https_1.HttpsError('invalid-argument', 'Invalid coordinates.');
     }
     return (0, nws_1.fetchRouteWeatherForFunction)(originLabel !== null && originLabel !== void 0 ? originLabel : 'Origin', originCoords, destLabel !== null && destLabel !== void 0 ? destLabel : 'Destination', destCoords);
+});
+async function requireAdmin(uid) {
+    var _a;
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (!userSnap.exists || ((_a = userSnap.data()) === null || _a === void 0 ? void 0 : _a.role) !== 'admin') {
+        throw new https_1.HttpsError('permission-denied', 'Admin access required.');
+    }
+}
+exports.geocodeAddress = (0, https_1.onCall)(async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'Must be signed in to geocode addresses.');
+    }
+    await requireAdmin(request.auth.uid);
+    const { query } = request.data;
+    if (!query || typeof query !== 'string' || query.trim().length < 3) {
+        throw new https_1.HttpsError('invalid-argument', 'Query must be at least 3 characters.');
+    }
+    try {
+        const results = await (0, geocode_1.geocodeSearch)(query);
+        return { results };
+    }
+    catch (error) {
+        throw new https_1.HttpsError('internal', error instanceof Error ? error.message : 'Geocoding failed.');
+    }
 });
 //# sourceMappingURL=index.js.map
