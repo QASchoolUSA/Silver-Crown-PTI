@@ -11,7 +11,9 @@ export function getOrderedStops(load: Pick<Load, 'stops'> | { stops?: LoadStop[]
   return [...sortStopsByType(stops, 'pickup'), ...sortStopsByType(stops, 'dropoff')];
 }
 
-export function getRoutePolyline(load: Pick<Load, 'stops' | 'originCoords' | 'destCoords'>): Coords[] {
+export function getRoutePolyline(
+  load: Pick<Load, 'stops'> & { originCoords?: Coords; destCoords?: Coords }
+): Coords[] {
   const ordered = getOrderedStops(load);
   if (ordered.length > 0) {
     return ordered.map((s) => s.coords);
