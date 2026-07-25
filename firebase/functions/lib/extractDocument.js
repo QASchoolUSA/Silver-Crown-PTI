@@ -238,9 +238,8 @@ function generateDevMockExtraction(fileName) {
     const docType = normalizeType(undefined, undefined, fileName);
     return {
         documentType: docType,
-        bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
-        rawText: 'Bill of lading freight document uploaded and processed',
-        confidence: 0.95,
+        rawText: 'Document uploaded and queued for vision extraction',
+        confidence: 0.80,
     };
 }
 //# sourceMappingURL=extractDocument.js.map

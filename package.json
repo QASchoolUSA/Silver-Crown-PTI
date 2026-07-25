@@ -31,5 +31,8 @@
     "ts-jest": "^29.2.6",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
-  }
+  },
+  "onlyBuiltDependencies": [
+    "tesseract.js"
+  ]
 }
