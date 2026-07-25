@@ -110,13 +110,16 @@ export default function DocumentsPage() {
       setUploading(true);
       setUploadProgress('Uploading file to secure storage...');
 
-      // 1. Automatically preprocess and enhance image on canvas (2048px max dimension)
+      // 1. Automatically preprocess and enhance image on canvas (2048px max dimension & +15% contrast boost)
       setUploadProgress('Enhancing document contrast for OCR...');
       const { base64Data, mimeType } = await optimizeDocumentImageForOCR(file, 2048);
+      const enhancedImageSrc = base64Data.startsWith('data:')
+        ? base64Data
+        : `data:${mimeType || 'image/jpeg'};base64,${base64Data}`;
 
-      // 2. Run 100% Real Local Tesseract.js OCR directly in browser
-      setUploadProgress('Extracting text from image pixels with Tesseract OCR...');
-      const localOcr = await runLocalDocumentOcr(file, (msg) => setUploadProgress(msg));
+      // 2. Run 100% Real Local Tesseract.js OCR on the high-contrast enhanced image
+      setUploadProgress('Extracting text from high-contrast image with Tesseract OCR...');
+      const localOcr = await runLocalDocumentOcr(enhancedImageSrc, (msg) => setUploadProgress(msg));
 
       // 3. Parse exact fields from REAL OCR text (0 random numbers!)
       const realParsedFields = parseFreightText(localOcr.rawText, file.name);
