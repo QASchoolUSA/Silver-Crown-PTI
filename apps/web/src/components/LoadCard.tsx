@@ -2,9 +2,25 @@ import { Link } from 'react-router';
 import type { Load } from '@silver-crown/shared';
 import LoadRouteMap from './LoadRouteMap';
 
-function statusLabel(status: Load['status']) {
+export function statusLabel(status: Load['status']) {
   if (status === 'in_transit') return 'In Transit';
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+export function statusPillClass(status: Load['status']) {
+  return status === 'delivered'
+    ? 'bg-surface-container-high text-on-surface-variant'
+    : 'bg-primary/20 text-primary';
+}
+
+export function deadheadOrDelivery(load: Load): { label: string; value: string } {
+  if (load.status === 'delivered') {
+    return {
+      label: 'Delivery',
+      value: load.deliveryDate ? new Date(load.deliveryDate).toLocaleDateString() : '—',
+    };
+  }
+  return { label: 'Deadhead', value: `${load.deadhead || '0'} mi` };
 }
 
 interface LoadCardProps {
@@ -12,13 +28,7 @@ interface LoadCardProps {
 }
 
 export default function LoadCard({ load }: LoadCardProps) {
-  const rightLabel = load.status === 'delivered' ? 'Delivery' : 'Deadhead';
-  const rightValue =
-    load.status === 'delivered'
-      ? load.deliveryDate
-        ? new Date(load.deliveryDate).toLocaleDateString()
-        : '—'
-      : `${load.deadhead || '0'} mi`;
+  const { label: rightLabel, value: rightValue } = deadheadOrDelivery(load);
 
   return (
     <Link
@@ -39,11 +49,7 @@ export default function LoadCard({ load }: LoadCardProps) {
             {load.origin} <span className="text-primary">→</span> {load.destination}
           </h2>
           <span
-            className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-              load.status === 'delivered'
-                ? 'bg-surface-container-high text-on-surface-variant'
-                : 'bg-primary/20 text-primary'
-            }`}
+            className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${statusPillClass(load.status)}`}
           >
             {statusLabel(load.status)}
           </span>
