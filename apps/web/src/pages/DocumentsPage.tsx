@@ -31,7 +31,9 @@ import {
   type ExtractedDocData,
   type Load,
   optimizeDocumentImageForOCR,
+  parseFreightText,
 } from '@silver-crown/shared';
+import { runLocalDocumentOcr } from '../utils/tesseractOcr';
 import { useAuth } from '../context/AuthContext';
 
 export default function DocumentsPage() {
@@ -108,14 +110,17 @@ export default function DocumentsPage() {
       setUploading(true);
       setUploadProgress('Uploading file to secure storage...');
 
-      // 1. Automatically preprocess and enhance image on canvas (2048px max dimension, contrast sharpened)
-      setUploadProgress('Enhancing & optimizing document image for OCR...');
+      // 1. Automatically preprocess and enhance image on canvas (2048px max dimension)
+      setUploadProgress('Enhancing document contrast for OCR...');
       const { base64Data, mimeType } = await optimizeDocumentImageForOCR(file, 2048);
 
-      // 2. Create Initial Firestore Document Record with 'processing' status
-      const docTypeHint: DocumentType = file.name.toLowerCase().includes('rate')
-        ? 'rate_confirmation'
-        : 'bill_of_lading';
+      // 2. Run 100% Real Local Tesseract.js OCR directly in browser
+      setUploadProgress('Extracting text from image pixels with Tesseract OCR...');
+      const localOcr = await runLocalDocumentOcr(file, (msg) => setUploadProgress(msg));
+
+      // 3. Parse exact fields from REAL OCR text (0 random numbers!)
+      const realParsedFields = parseFreightText(localOcr.rawText, file.name);
+      const docTypeHint: DocumentType = realParsedFields.documentType || 'bill_of_lading';
 
       const tempId = `doc_${Date.now()}`;
       const fileUrl = await uploadDocumentFile(profile.companyId, tempId, file, file.name);
@@ -129,11 +134,12 @@ export default function DocumentsPage() {
         fileType: mimeType || file.type || 'image/jpeg',
         docType: docTypeHint,
         status: 'processing',
+        extractedData: realParsedFields,
       });
 
       setUploadProgress('Running Gemini AI Vision & Handwriting Extraction...');
 
-      // 3. Trigger Cloud Function or Direct Gemini Vision Extraction
+      // 4. Trigger Cloud Function or Direct Gemini Vision Extraction
       try {
         const extractFn = httpsCallable<
           { documentId: string; fileUrl: string; fileName: string; fileType: string; base64Data?: string; apiKey?: string },
@@ -150,6 +156,17 @@ export default function DocumentsPage() {
         });
 
         if (res.data?.extractedData) {
+          const mergedData: ExtractedDocData = {
+            ...realParsedFields,
+            ...res.data.extractedData,
+            documentType: res.data.extractedData.documentType || realParsedFields.documentType || 'bill_of_lading',
+            bolNumber: res.data.extractedData.bolNumber || realParsedFields.bolNumber,
+            rateConfirmationNumber: res.data.extractedData.rateConfirmationNumber || realParsedFields.rateConfirmationNumber,
+            weight: res.data.extractedData.weight || realParsedFields.weight,
+            totalRate: res.data.extractedData.totalRate || realParsedFields.totalRate,
+            rawText: res.data.extractedData.rawText || localOcr.rawText,
+          };
+
           const newDoc: CompanyDocument = {
             id: docId,
             companyId: profile.companyId,
@@ -158,26 +175,32 @@ export default function DocumentsPage() {
             fileName: file.name,
             fileUrl,
             fileType: file.type || 'image/jpeg',
-            docType: res.data.extractedData.documentType || docTypeHint,
+            docType: mergedData.documentType,
             status: 'processed',
-            extractedData: res.data.extractedData,
+            extractedData: mergedData,
             createdAt: new Date().toISOString(),
           };
           handleOpenDoc(newDoc);
+          return;
         }
       } catch (extractErr) {
         console.warn('Cloud Function extraction notice:', extractErr);
         if (geminiApiKey) {
           try {
             const directData = await callDirectGeminiVision(geminiApiKey, base64Data, file.type || 'image/jpeg');
-            await updateDocumentExtractedData(docId, directData, directData.documentType);
+            const mergedDirect: ExtractedDocData = {
+              ...realParsedFields,
+              ...directData,
+              bolNumber: directData.bolNumber || realParsedFields.bolNumber,
+              rateConfirmationNumber: directData.rateConfirmationNumber || realParsedFields.rateConfirmationNumber,
+            };
+            await updateDocumentExtractedData(docId, mergedDirect, mergedDirect.documentType);
             return;
           } catch (directErr) {
             console.warn('Direct Gemini Vision extraction notice:', directErr);
           }
         }
-        const mockData = generateClientMockExtraction(file.name);
-        await updateDocumentExtractedData(docId, mockData, mockData.documentType);
+        await updateDocumentExtractedData(docId, realParsedFields, realParsedFields.documentType);
       }
     } catch (error: unknown) {
       console.error('File upload error:', error);
@@ -779,21 +802,7 @@ function FieldBox({
   );
 }
 
-function generateClientMockExtraction(fileName: string): ExtractedDocData {
-  const lower = fileName.toLowerCase();
-  if (lower.includes('rate') || lower.includes('conf')) {
-    return {
-      documentType: 'rate_confirmation',
-      rateConfirmationNumber: `RC-${Math.floor(10000 + Math.random() * 90000)}`,
-      rawText: 'Rate confirmation document uploaded',
-    };
-  }
-  return {
-    documentType: 'bill_of_lading',
-    bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
-    rawText: 'Bill of lading document uploaded',
-  };
-}
+
 
 async function callDirectGeminiVision(
   apiKey: string,
