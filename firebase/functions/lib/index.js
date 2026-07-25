@@ -33,12 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.geocodeAddress = exports.getRouteWeather = exports.seedDemoData = exports.redeemInviteCode = void 0;
+exports.geocodeAddress = exports.getRouteWeather = exports.seedDemoData = exports.redeemInviteCode = exports.extractDocumentData = void 0;
 const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const v2_1 = require("firebase-functions/v2");
 const nws_1 = require("./nws");
 const geocode_1 = require("./geocode");
+var extractDocument_1 = require("./extractDocument");
+Object.defineProperty(exports, "extractDocumentData", { enumerable: true, get: function () { return extractDocument_1.extractDocumentData; } });
 admin.initializeApp();
 const db = admin.firestore();
 (0, v2_1.setGlobalOptions)({ maxInstances: 10 });
