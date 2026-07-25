@@ -11,9 +11,43 @@ import InspectionDetailPage from './pages/InspectionDetailPage';
 import DriversPage from './pages/DriversPage';
 import DriverDetailPage from './pages/DriverDetailPage';
 import InviteCodesPage from './pages/InviteCodesPage';
-import './lib/firebase';
+import { firebaseInitError } from './lib/firebase';
+
+function FirebaseSetupScreen({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-surface p-8">
+      <div className="w-full max-w-lg text-center">
+        <h1 className="font-[family-name:var(--font-bebas)] text-5xl text-primary tracking-widest">
+          SILVER CROWN
+        </h1>
+        <p className="text-on-surface-variant text-sm uppercase tracking-wider mt-2 mb-8">
+          Setup required
+        </p>
+        <p className="text-on-surface mb-6">{message}</p>
+        <ol className="text-left text-on-surface-variant text-sm space-y-3 list-decimal list-inside">
+          <li>
+            Copy <code className="text-primary">.env.example</code> to{' '}
+            <code className="text-primary">.env</code> at the repo root
+          </li>
+          <li>
+            Fill in Firebase credentials, or set{' '}
+            <code className="text-primary">VITE_USE_FIREBASE_EMULATORS=true</code> for local
+            emulators
+          </li>
+          <li>
+            Restart <code className="text-primary">pnpm dev:web</code>
+          </li>
+        </ol>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
+  if (firebaseInitError) {
+    return <FirebaseSetupScreen message={firebaseInitError} />;
+  }
+
   return (
     <AuthProvider>
       <BrowserRouter>

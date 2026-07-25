@@ -17,4 +17,10 @@ const env: Record<string, string | undefined> = {
   VITE_USE_FIREBASE_EMULATORS: import.meta.env.VITE_USE_FIREBASE_EMULATORS,
 };
 
-initFirebase(getFirebaseConfigFromEnv(env));
+export let firebaseInitError: string | null = null;
+
+try {
+  initFirebase(getFirebaseConfigFromEnv(env));
+} catch (err) {
+  firebaseInitError = err instanceof Error ? err.message : 'Failed to initialize Firebase';
+}
