@@ -1,7 +1,8 @@
 /**
  * Automatic background image preprocessor for document OCR.
- * Automatically resizes, sharpens, and optimizes contrast on an in-memory canvas.
- * Runs 100% automatically in browser code with 0 manual effort from the user.
+ * Uses Bradley-Roth Adaptive Thresholding (Binarization) & Grayscale Normalization
+ * to eliminate phone camera shadows, cab lighting glare, and background paper texture.
+ * Turns phone photos into scanner-quality black-and-white document images.
  */
 export async function optimizeDocumentImageForOCR(
   file: File | Blob,
@@ -50,21 +51,72 @@ export async function optimizeDocumentImageForOCR(
       // Draw image onto canvas
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Contrast enhancement filter for crisp text recognition
       try {
         const imageData = ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
-        const contrast = 1.15; // 15% contrast boost for document text
-        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
+        // 1. Convert RGBA to Grayscale
+        const grayscale = new Uint8Array(width * height);
         for (let i = 0; i < data.length; i += 4) {
-          data[i] = factor * (data[i] - 128) + 128; // R
-          data[i + 1] = factor * (data[i + 1] - 128) + 128; // G
-          data[i + 2] = factor * (data[i + 2] - 128) + 128; // B
+          // Luminance formula
+          const gray = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+          grayscale[i / 4] = gray;
         }
+
+        // 2. Compute Integral Image (Summed Area Table for O(1) local mean calculations)
+        const integral = new Uint32Array(width * height);
+        for (let x = 0; x < width; x++) {
+          let sum = 0;
+          for (let y = 0; y < height; y++) {
+            const index = y * width + x;
+            sum += grayscale[index];
+            if (x === 0) {
+              integral[index] = sum;
+            } else {
+              integral[index] = integral[index - 1] + sum;
+            }
+          }
+        }
+
+        // 3. Bradley-Roth Adaptive Binarization
+        const S = Math.max(16, Math.floor(width / 16)); // Window size
+        const s2 = Math.floor(S / 2);
+        const t = 0.15; // Threshold percentage (15% darker than surrounding area = ink text)
+
+        for (let x = 0; x < width; x++) {
+          for (let y = 0; y < height; y++) {
+            const index = y * width + x;
+
+            const x1 = Math.max(x - s2, 0);
+            const x2 = Math.min(x + s2, width - 1);
+            const y1 = Math.max(y - s2, 0);
+            const y2 = Math.min(y + s2, height - 1);
+
+            const count = (x2 - x1) * (y2 - y1);
+
+            // Sum = I(x2, y2) - I(x1, y2) - I(x2, y1) + I(x1, y1)
+            const sum =
+              integral[y2 * width + x2] -
+              integral[y1 * width + x2] -
+              integral[y2 * width + x1] +
+              integral[y1 * width + x1];
+
+            // If pixel luminance is 15% darker than surrounding average, set black (text), else set white (paper)
+            const pixelVal = grayscale[index];
+            const isDarkText = pixelVal * count < sum * (1.0 - t);
+            const outputVal = isDarkText ? 0 : 255;
+
+            const dataIndex = index * 4;
+            data[dataIndex] = outputVal; // R
+            data[dataIndex + 1] = outputVal; // G
+            data[dataIndex + 2] = outputVal; // B
+            data[dataIndex + 3] = 255; // Alpha
+          }
+        }
+
         ctx.putImageData(imageData, 0, 0);
       } catch (e) {
-        console.warn('Canvas filter notice, proceeding with standard render:', e);
+        console.warn('Bradley adaptive thresholding notice, proceeding with standard render:', e);
       }
 
       // Export high-quality JPEG base64
