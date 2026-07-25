@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router';
-import { LayoutDashboard, Truck, ClipboardList, Users, Ticket, LogOut } from 'lucide-react';
+import { LayoutDashboard, Truck, ClipboardList, Users, Ticket, FileText, LogOut } from 'lucide-react';
 import { signOut } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
 
 const links = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/loads', icon: Truck, label: 'Loads' },
+  { to: '/documents', icon: FileText, label: 'Documents' },
   { to: '/inspections', icon: ClipboardList, label: 'Inspections' },
   { to: '/drivers', icon: Users, label: 'Drivers' },
   { to: '/invite-codes', icon: Ticket, label: 'Invite Codes' },

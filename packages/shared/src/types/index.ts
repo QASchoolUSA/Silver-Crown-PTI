@@ -140,3 +140,40 @@ export interface RouteWeather {
   origin: LocationWeather;
   destination: LocationWeather;
 }
+
+export type DocumentType = 'bill_of_lading' | 'rate_confirmation' | 'proof_of_delivery' | 'receipt' | 'other';
+
+export interface ExtractedDocData {
+  documentType: DocumentType;
+  bolNumber?: string;
+  rateConfirmationNumber?: string;
+  carrierName?: string;
+  shipperName?: string;
+  consigneeName?: string;
+  originAddress?: string;
+  destinationAddress?: string;
+  pickupDate?: string;
+  deliveryDate?: string;
+  totalRate?: string;
+  weight?: string;
+  handwrittenNotes?: string;
+  rawText?: string;
+  confidence?: number;
+}
+
+export interface CompanyDocument {
+  id: string;
+  companyId: string;
+  uploadedBy: string;
+  uploaderName: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string;
+  docType: DocumentType;
+  status: 'processing' | 'processed' | 'error';
+  extractedData?: ExtractedDocData;
+  loadId?: string;
+  errorMessage?: string;
+  createdAt: string;
+}
+

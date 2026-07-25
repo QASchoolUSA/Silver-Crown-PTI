@@ -80,5 +80,12 @@ service cloud.firestore {
         && resource.data.driverId == request.auth.uid
         && !('signatureUrl' in resource.data);
     }
+
+    match /documents/{docId} {
+      allow read: if isUser() && resource.data.companyId == userCompanyId();
+      allow create: if isUser() && request.resource.data.companyId == userCompanyId();
+      allow update, delete: if isUser() && resource.data.companyId == userCompanyId();
+    }
   }
 }
+

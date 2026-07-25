@@ -11,6 +11,7 @@ export * from './firebase/inviteCodes';
 export * from './firebase/companies';
 export * from './firebase/users';
 export * from './firebase/geocode';
+export * from './firebase/documents';
 export * from './weather/nws';
 export * from './utils/pdf';
 export * from './utils/images';

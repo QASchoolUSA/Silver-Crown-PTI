@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { fetchRouteWeatherForFunction, isValidCoords } from './nws';
 import { geocodeSearch } from './geocode';
+export { extractDocumentData } from './extractDocument';
 
 admin.initializeApp();
 const db = admin.firestore();
