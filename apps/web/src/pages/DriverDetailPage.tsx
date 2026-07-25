@@ -117,6 +117,48 @@ export default function DriverDetailPage() {
         </div>
       </div>
 
+      {driver.payrollSummary && (
+        <div className="bg-surface-container border border-outline-variant rounded-lg p-5 mb-6">
+          <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-4">
+            Payroll Summary
+            {driver.payrollSummary.updatedAt && (
+              <span className="font-normal normal-case tracking-normal text-on-surface-variant">
+                {' '}
+                · updated {new Date(driver.payrollSummary.updatedAt).toLocaleDateString()}
+              </span>
+            )}
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">Total Gross Pay</p>
+              <p className="font-bold text-lg">${driver.payrollSummary.totalGrossPay.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">
+                Dispatch Share ({driver.payrollSummary.dispatchSharePct}%)
+              </p>
+              <p className="font-bold text-lg">${driver.payrollSummary.dispatchShare.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">Trucking Expenses</p>
+              <p className="font-bold text-lg">${driver.payrollSummary.truckingExpenses.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">Paid to Date</p>
+              <p className="font-bold text-lg text-primary">${driver.payrollSummary.paidToDate.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">Balance Due</p>
+              <p className="font-bold text-lg text-primary">${driver.payrollSummary.balanceDue.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">Loads</p>
+              <p className="font-bold text-lg">{driver.payrollSummary.loadCount}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-surface-container border border-outline-variant rounded-lg p-5">
         <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
           Authorized Equipment

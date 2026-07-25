@@ -107,7 +107,14 @@ export default function LoadDetailPage() {
           <h1 className="font-[family-name:var(--font-bebas)] text-4xl tracking-wider uppercase leading-tight">
             {load.origin} <span className="text-primary">→</span> {load.destination}
           </h1>
-          <p className="text-on-surface-variant mt-2 text-sm">Created {formatDate(load.createdAt)}</p>
+          {(load.loadRef || load.broker) && (
+            <p className="text-on-surface-variant mt-2 text-sm">
+              {[load.loadRef, load.broker].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          <p className="text-on-surface-variant mt-1 text-sm">
+            {load.dispatchDate ? `Dispatched ${formatDate(load.dispatchDate)}` : `Created ${formatDate(load.createdAt)}`}
+          </p>
         </div>
         <span
           className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
@@ -166,11 +173,14 @@ export default function LoadDetailPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         {[
-          { icon: DollarSign, label: 'Payout', value: `$${load.payout}` },
+          { icon: DollarSign, label: 'Gross Pay', value: `$${load.payout}` },
+          ...(load.lineHaul ? [{ icon: DollarSign, label: 'Line Haul', value: `$${load.lineHaul}` }] : []),
+          ...(load.accessorials ? [{ icon: DollarSign, label: 'Accessorials', value: `$${load.accessorials}` }] : []),
           { icon: Route, label: 'Total Miles', value: `${load.miles} mi` },
           { icon: MapPin, label: 'Deadhead', value: `${load.deadhead || '0'} mi` },
           { icon: Truck, label: 'Equipment', value: load.type },
           { icon: User, label: 'Driver', value: load.assignedDriverName || 'Unassigned' },
+          ...(load.pickupDate ? [{ icon: Calendar, label: 'Pickup Date', value: load.pickupDate }] : []),
           {
             icon: Calendar,
             label: load.status === 'delivered' ? 'Delivered' : 'Delivery Date',
@@ -189,6 +199,21 @@ export default function LoadDetailPage() {
           </div>
         ))}
       </div>
+
+      {(load.accessorialDetail || load.importNotes || load.sourceFile) && (
+        <div className="bg-surface-container border border-outline-variant rounded-lg p-5 mb-6 space-y-3 text-sm">
+          <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Load Details</h2>
+          {load.accessorialDetail && (
+            <p><span className="text-on-surface-variant">Accessorial detail:</span> {load.accessorialDetail}</p>
+          )}
+          {load.importNotes && (
+            <p><span className="text-on-surface-variant">Notes:</span> {load.importNotes}</p>
+          )}
+          {load.sourceFile && (
+            <p><span className="text-on-surface-variant">Rate con:</span> {load.sourceFile}</p>
+          )}
+        </div>
+      )}
 
       <div className="bg-surface-container border border-outline-variant rounded-lg p-5 space-y-5">
         <div>

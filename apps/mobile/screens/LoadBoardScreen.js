@@ -29,7 +29,9 @@ export default function LoadBoardScreen({ navigation }) {
   const filteredLoads = activeData.filter((load) => {
     const matchesSearch =
       load.origin.toLowerCase().includes(search.toLowerCase()) ||
-      load.destination.toLowerCase().includes(search.toLowerCase());
+      load.destination.toLowerCase().includes(search.toLowerCase()) ||
+      (load.loadRef || '').toLowerCase().includes(search.toLowerCase()) ||
+      (load.broker || '').toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filterType === 'All' || load.type === filterType;
     return matchesSearch && matchesFilter;
   });
@@ -81,6 +83,8 @@ export default function LoadBoardScreen({ navigation }) {
             destination={load.destination}
             payout={load.payout}
             miles={load.miles}
+            loadRef={load.loadRef}
+            broker={load.broker}
             rightLabel={activeTab === 'Available Loads' ? 'Deadhead' : 'Delivery'}
             rightValue={activeTab === 'Available Loads' ? `${load.deadhead || '0'} mi` : load.deliveryDate || '—'}
             stops={load.stops}

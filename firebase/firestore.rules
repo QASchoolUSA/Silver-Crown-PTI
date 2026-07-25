@@ -35,12 +35,14 @@ service cloud.firestore {
         request.auth.uid == userId ||
         (isAdmin() && resource.data.companyId == userCompanyId())
       );
-      allow create: if false;
+      allow create: if isAdmin()
+        && request.resource.data.companyId == userCompanyId()
+        && request.resource.data.role == 'driver';
       allow update: if isSignedIn() && request.auth.uid == userId;
       allow update: if isAdmin()
         && resource.data.companyId == userCompanyId()
         && resource.data.role == 'driver'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipmentTypes']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipmentTypes', 'payrollSummary']);
       allow delete: if false;
     }
 

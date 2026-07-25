@@ -16,6 +16,7 @@ export * from './weather/nws';
 export * from './utils/pdf';
 export * from './utils/images';
 export * from './utils/loadStops';
+export * from './utils/loadStats';
 export * from './utils/stopDrafts';
 export * from './utils/freightParser';
 export * from './utils/imagePreprocess';

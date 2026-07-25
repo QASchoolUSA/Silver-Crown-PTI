@@ -35,6 +35,8 @@ export default function LoadCard({
   stops,
   originCoords,
   destCoords,
+  loadRef,
+  broker,
   onBook,
   showActions = true,
 }) {
@@ -86,6 +88,9 @@ export default function LoadCard({
             {origin} <Text style={styles.arrowText}>➔</Text> {destination}
           </Text>
         </View>
+        {(loadRef || broker) && (
+          <Text style={styles.subtitleText}>{[loadRef, broker].filter(Boolean).join(' · ')}</Text>
+        )}
         <View style={styles.metricsRow}>
           <View style={styles.metricCol}>
             <Text style={styles.metricLabel}>Payout</Text>
@@ -143,6 +148,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     flex: 1,
     textTransform: 'uppercase',
+  },
+  subtitleText: {
+    color: colors.onSurfaceVariant,
+    fontFamily: typography.montserrat,
+    fontSize: 12,
+    marginBottom: 8,
   },
   arrowText: {
     color: colors.primary,

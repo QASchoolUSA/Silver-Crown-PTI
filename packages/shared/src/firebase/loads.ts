@@ -34,6 +34,15 @@ function mapLoad(id: string, data: Record<string, unknown>): Load {
     stops: normalized.stops,
     deliveryDate: data.deliveryDate as string | undefined,
     createdAt: data.createdAt as string,
+    loadRef: data.loadRef as string | undefined,
+    broker: data.broker as string | undefined,
+    dispatchDate: data.dispatchDate as string | undefined,
+    pickupDate: data.pickupDate as string | undefined,
+    lineHaul: data.lineHaul as string | undefined,
+    accessorials: data.accessorials as string | undefined,
+    accessorialDetail: data.accessorialDetail as string | undefined,
+    importNotes: data.importNotes as string | undefined,
+    sourceFile: data.sourceFile as string | undefined,
   };
 }
 
@@ -129,6 +138,17 @@ export interface CreateLoadInput {
   deadhead?: string;
   type: EquipmentType;
   status?: LoadStatus;
+  deliveryDate?: string;
+  createdAt?: string;
+  loadRef?: string;
+  broker?: string;
+  dispatchDate?: string;
+  pickupDate?: string;
+  lineHaul?: string;
+  accessorials?: string;
+  accessorialDetail?: string;
+  importNotes?: string;
+  sourceFile?: string;
 }
 
 export async function createLoad(input: CreateLoadInput): Promise<string> {
@@ -147,7 +167,17 @@ export async function createLoad(input: CreateLoadInput): Promise<string> {
     deadhead: input.deadhead,
     type: input.type,
     status: input.status || 'available',
-    createdAt: new Date().toISOString(),
+    deliveryDate: input.deliveryDate,
+    createdAt: input.createdAt || new Date().toISOString(),
+    loadRef: input.loadRef,
+    broker: input.broker,
+    dispatchDate: input.dispatchDate,
+    pickupDate: input.pickupDate,
+    lineHaul: input.lineHaul,
+    accessorials: input.accessorials,
+    accessorialDetail: input.accessorialDetail,
+    importNotes: input.importNotes,
+    sourceFile: input.sourceFile,
   });
   return ref.id;
 }

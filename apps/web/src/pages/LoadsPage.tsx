@@ -37,7 +37,9 @@ export default function LoadsPage() {
     const matchesSearch =
       l.origin.toLowerCase().includes(search.toLowerCase()) ||
       l.destination.toLowerCase().includes(search.toLowerCase()) ||
-      (l.assignedDriverName || '').toLowerCase().includes(search.toLowerCase());
+      (l.assignedDriverName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (l.loadRef || '').toLowerCase().includes(search.toLowerCase()) ||
+      (l.broker || '').toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'all' || l.status === statusFilter;
     const matchesDriver = driverFilter === 'all' || l.assignedDriverId === driverFilter;
     return matchesSearch && matchesStatus && matchesDriver;
@@ -131,7 +133,7 @@ export default function LoadsPage() {
                 <tr className="border-b border-outline-variant text-on-surface-variant text-xs uppercase tracking-wider">
                   <th className="text-left p-4">Route</th>
                   <th className="text-left p-4">Status</th>
-                  <th className="text-left p-4">Payout</th>
+                  <th className="text-left p-4">Gross Pay</th>
                   <th className="text-left p-4">Miles</th>
                   <th className="text-left p-4">Deadhead / Delivery</th>
                   <th className="text-left p-4">Type</th>

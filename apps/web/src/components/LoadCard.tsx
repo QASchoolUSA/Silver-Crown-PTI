@@ -44,7 +44,7 @@ export default function LoadCard({ load }: LoadCardProps) {
       />
 
       <div className="p-4">
-        <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-start justify-between gap-3 mb-1">
           <h2 className="font-[family-name:var(--font-bebas)] text-2xl tracking-wide leading-tight uppercase group-hover:text-primary transition-colors">
             {load.origin} <span className="text-primary">→</span> {load.destination}
           </h2>
@@ -54,10 +54,15 @@ export default function LoadCard({ load }: LoadCardProps) {
             {statusLabel(load.status)}
           </span>
         </div>
+        {(load.loadRef || load.broker) && (
+          <p className="text-on-surface-variant text-xs mb-3">
+            {[load.loadRef, load.broker].filter(Boolean).join(' · ')}
+          </p>
+        )}
 
         <div className="grid grid-cols-3 gap-2 mb-3 text-sm">
           <div>
-            <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">Payout</p>
+            <p className="text-on-surface-variant text-[10px] uppercase tracking-wider">Gross Pay</p>
             <p className="text-primary font-bold">${load.payout}</p>
           </div>
           <div className="text-center">

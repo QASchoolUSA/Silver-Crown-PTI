@@ -14,6 +14,8 @@
     "emulators:exec": "firebase emulators:exec --only auth,firestore,storage,functions \"npx jest packages/shared/src/__tests__/firestore.rules.test.ts\"",
     "seed": "tsx firebase/seed.ts",
     "seed:production": "tsx firebase/seed-production.ts",
+    "import:alexey": "tsx firebase/import-alexey-kedrov.ts",
+    "import:alexey:validate": "tsx firebase/import-alexey-kedrov.ts -- --validate",
     "lint": "pnpm -r lint"
   },
   "overrides": {

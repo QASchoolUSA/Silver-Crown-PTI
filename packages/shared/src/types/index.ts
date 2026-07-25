@@ -1,5 +1,16 @@
 export type UserRole = 'driver' | 'admin';
 
+export interface PayrollSummary {
+  totalGrossPay: number;
+  dispatchSharePct: number;
+  dispatchShare: number;
+  truckingExpenses: number;
+  paidToDate: number;
+  balanceDue: number;
+  loadCount: number;
+  updatedAt: string;
+}
+
 export interface AppUser {
   uid: string;
   email: string;
@@ -7,6 +18,7 @@ export interface AppUser {
   companyId: string;
   role: UserRole;
   equipmentTypes?: EquipmentType[];
+  payrollSummary?: PayrollSummary;
   createdAt: string;
 }
 
@@ -50,6 +62,15 @@ export interface Load {
   stops?: LoadStop[];
   deliveryDate?: string;
   createdAt: string;
+  loadRef?: string;
+  broker?: string;
+  dispatchDate?: string;
+  pickupDate?: string;
+  lineHaul?: string;
+  accessorials?: string;
+  accessorialDetail?: string;
+  importNotes?: string;
+  sourceFile?: string;
 }
 
 export type InspectionStatus = 'PASS' | 'DEFECTS FOUND';

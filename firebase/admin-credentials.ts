@@ -31,6 +31,10 @@ export const ADMIN_CREDENTIALS_HELP = [
   'Note: `firebase login` does not provide Admin SDK credentials.',
 ].join('\n');
 
+export function hasServiceAccountCredential(): boolean {
+  return loadServiceAccountCredential() !== null;
+}
+
 export function initAdminApp(projectId: string) {
   const serviceAccount = loadServiceAccountCredential();
   if (serviceAccount) {

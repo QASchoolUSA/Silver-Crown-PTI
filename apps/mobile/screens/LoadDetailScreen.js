@@ -177,6 +177,8 @@ export default function LoadDetailScreen({ route }) {
         destination={load.destination}
         payout={load.payout}
         miles={load.miles}
+        loadRef={load.loadRef}
+        broker={load.broker}
         rightLabel={rightLabel}
         rightValue={rightValue}
         stops={orderedStops}
@@ -184,6 +186,17 @@ export default function LoadDetailScreen({ route }) {
         destCoords={load.destCoords}
         showActions={false}
       />
+
+      {(load.lineHaul || load.accessorials || load.dispatchDate || load.pickupDate) && (
+        <View style={styles.freightDetails}>
+          {load.loadRef && <Text style={styles.detailRow}>Load: {load.loadRef}</Text>}
+          {load.broker && <Text style={styles.detailRow}>Broker: {load.broker}</Text>}
+          {load.lineHaul && <Text style={styles.detailRow}>Line haul: ${load.lineHaul}</Text>}
+          {load.accessorials && <Text style={styles.detailRow}>Accessorials: ${load.accessorials}</Text>}
+          {load.dispatchDate && <Text style={styles.detailRow}>Dispatched: {load.dispatchDate}</Text>}
+          {load.pickupDate && <Text style={styles.detailRow}>Pickup: {load.pickupDate}</Text>}
+        </View>
+      )}
 
       <Text style={styles.sectionTitle}>Stops</Text>
       <View style={styles.stopsList}>
@@ -385,4 +398,18 @@ const styles = StyleSheet.create({
   periodTempValue: { color: colors.onSurface, fontFamily: typography.montserratBold, fontSize: 14 },
   periodWind: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 10, marginTop: 2 },
   weatherUnavailable: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 14 },
+  freightDetails: {
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    padding: 16,
+    marginBottom: 16,
+    gap: 6,
+  },
+  detailRow: {
+    color: colors.onSurfaceVariant,
+    fontFamily: typography.montserrat,
+    fontSize: 13,
+  },
 });
