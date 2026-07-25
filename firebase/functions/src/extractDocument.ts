@@ -32,7 +32,7 @@ export const extractDocumentData = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'Must be signed in to extract document data.');
   }
 
-  const { documentId, fileUrl, fileName, fileType, base64Data } = request.data as ExtractDocumentRequest;
+  const { documentId, fileUrl, fileName, fileType, base64Data, apiKey: requestApiKey } = request.data as ExtractDocumentRequest & { apiKey?: string };
   if (!documentId) {
     throw new HttpsError('invalid-argument', 'documentId is required.');
   }
@@ -40,7 +40,7 @@ export const extractDocumentData = onCall(async (request) => {
   const db = admin.firestore();
   const docRef = db.collection('documents').doc(documentId);
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
+  const apiKey = requestApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
 
   try {
     let extracted: ExtractedDocData;
@@ -95,10 +95,11 @@ async function callGeminiVisionApi(
     throw new Error('No image base64 data available to process with Gemini.');
   }
 
-  const prompt = `You are an expert OCR & Document Processing AI for freight and trucking logistics.
-Analyze this document image (which may include printed text, stamps, and handwritten text).
+  const prompt = `You are a world-class AI document extractor specialized EXCLUSIVELY in Freight & Trucking Logistics documents (Bills of Lading, Rate Confirmations, Proof of Delivery, CAT Scale / Weight Tickets, Fuel / Lumper Receipts).
 
-Extract all structured info in JSON format matching this exact JSON schema:
+Your job is to read the attached document image (which contains printed text, logos, tables, stamps, or handwritten notes) and extract all freight details.
+
+Extract structured JSON strictly following this schema:
 {
   "documentType": "bill_of_lading" | "rate_confirmation" | "proof_of_delivery" | "receipt" | "other",
   "bolNumber": string or null,
@@ -116,8 +117,16 @@ Extract all structured info in JSON format matching this exact JSON schema:
   "rawText": string or null
 }
 
-Pay extra attention to handwritten driver signatures, notes, weight scale stamps, and modified addresses.
-Return ONLY valid JSON matching the schema.`;
+Classification Rules for Trucking Documents:
+1. "bill_of_lading": Contains terms like "Bill of Lading", "BOL", "Straight Bill of Lading", Shipper & Consignee info, commodity list, piece counts, trailer/seal #.
+2. "rate_confirmation": Contains "Rate Confirmation", "Confirmation #", "Broker", "Load Agreement", carrier payout/rate ($ amount), linehaul, origin/destination.
+3. "proof_of_delivery": Contains "Proof of Delivery", "POD", "Received By", delivery date/timestamp, consignee signature, or "Delivered".
+4. "receipt": Weight tickets (CAT Scale), Fuel receipts, Lumper receipts, Toll receipts, Maintenance invoices.
+
+Field Rules:
+- Extract numbers, rates (e.g. "$2,400.00"), weights (e.g. "42,000 lbs"), dates (YYYY-MM-DD format if possible).
+- "handwrittenNotes": Extract ONLY actual handwritten driver/receiver handwriting, signatures, stamped text, or modified numbers. If no handwriting is visible, set to null.
+- Return ONLY raw valid JSON.`;
 
   const payload = {
     contents: [
@@ -139,52 +148,59 @@ Return ONLY valid JSON matching the schema.`;
     },
   };
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  // Use valid Gemini Flash model endpoints (gemini-1.5-flash / gemini-2.0-flash)
+  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+  let lastError: Error | null = null;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  for (const modelName of modelsToTry) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errText}`);
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn(`Gemini model ${modelName} returned ${response.status}: ${errText}`);
+        lastError = new Error(`Gemini API error (${response.status}): ${errText}`);
+        continue;
+      }
+
+      const result = await response.json();
+      const textOutput = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!textOutput) {
+        continue;
+      }
+
+      const cleanedText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const jsonParsed = JSON.parse(cleanedText);
+
+      return {
+        documentType: jsonParsed.documentType || 'other',
+        bolNumber: jsonParsed.bolNumber || undefined,
+        rateConfirmationNumber: jsonParsed.rateConfirmationNumber || undefined,
+        carrierName: jsonParsed.carrierName || undefined,
+        shipperName: jsonParsed.shipperName || undefined,
+        consigneeName: jsonParsed.consigneeName || undefined,
+        originAddress: jsonParsed.originAddress || undefined,
+        destinationAddress: jsonParsed.destinationAddress || undefined,
+        pickupDate: jsonParsed.pickupDate || undefined,
+        deliveryDate: jsonParsed.deliveryDate || undefined,
+        totalRate: jsonParsed.totalRate || undefined,
+        weight: jsonParsed.weight || undefined,
+        handwrittenNotes: jsonParsed.handwrittenNotes || undefined,
+        rawText: jsonParsed.rawText || cleanedText,
+        confidence: 0.98,
+      };
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
   }
 
-  const result = await response.json();
-  const textOutput = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!textOutput) {
-    throw new Error('Gemini API returned an empty response.');
-  }
-
-  try {
-    const jsonParsed = JSON.parse(textOutput);
-    return {
-      documentType: jsonParsed.documentType || 'other',
-      bolNumber: jsonParsed.bolNumber || undefined,
-      rateConfirmationNumber: jsonParsed.rateConfirmationNumber || undefined,
-      carrierName: jsonParsed.carrierName || undefined,
-      shipperName: jsonParsed.shipperName || undefined,
-      consigneeName: jsonParsed.consigneeName || undefined,
-      originAddress: jsonParsed.originAddress || undefined,
-      destinationAddress: jsonParsed.destinationAddress || undefined,
-      pickupDate: jsonParsed.pickupDate || undefined,
-      deliveryDate: jsonParsed.deliveryDate || undefined,
-      totalRate: jsonParsed.totalRate || undefined,
-      weight: jsonParsed.weight || undefined,
-      handwrittenNotes: jsonParsed.handwrittenNotes || undefined,
-      rawText: jsonParsed.rawText || textOutput,
-      confidence: 0.95,
-    };
-  } catch {
-    return {
-      documentType: 'other',
-      rawText: textOutput,
-      confidence: 0.7,
-    };
-  }
+  throw lastError || new Error('Failed to extract data with Gemini models.');
 }
 
 function generateDevMockExtraction(fileName: string): ExtractedDocData {

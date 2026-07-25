@@ -15,6 +15,7 @@ import {
   DollarSign,
   FileCheck,
   PenTool,
+  Key,
 } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -37,6 +38,9 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<CompanyDocument[]>([]);
   const [loads, setLoads] = useState<Load[]>([]);
   const [loading, setLoading] = useState(true);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [tempKeyInput, setTempKeyInput] = useState('');
 
   // Upload states
   const [isDragging, setIsDragging] = useState(false);
@@ -55,6 +59,13 @@ export default function DocumentsPage() {
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+
+  const saveApiKey = (key: string) => {
+    const trimmed = key.trim();
+    setGeminiApiKey(trimmed);
+    localStorage.setItem('gemini_api_key', trimmed);
+    setShowKeyModal(false);
+  };
 
   useEffect(() => {
     if (!profile?.companyId) return;
@@ -131,10 +142,10 @@ export default function DocumentsPage() {
 
       setUploadProgress('Running Gemini AI Vision & Handwriting Extraction...');
 
-      // 3. Trigger Cloud Function or Fallback Extraction
+      // 3. Trigger Cloud Function or Direct Gemini Vision Extraction
       try {
         const extractFn = httpsCallable<
-          { documentId: string; fileUrl: string; fileName: string; fileType: string; base64Data?: string },
+          { documentId: string; fileUrl: string; fileName: string; fileType: string; base64Data?: string; apiKey?: string },
           { success: boolean; extractedData: ExtractedDocData }
         >(getFirebaseFunctions(), 'extractDocumentData');
 
@@ -144,6 +155,7 @@ export default function DocumentsPage() {
           fileName: file.name,
           fileType: file.type || 'image/jpeg',
           base64Data,
+          apiKey: geminiApiKey,
         });
 
         if (res.data?.extractedData) {
@@ -163,8 +175,16 @@ export default function DocumentsPage() {
           handleOpenDoc(newDoc);
         }
       } catch (extractErr) {
-        console.warn('Cloud Function extraction warning, running client fallback:', extractErr);
-        // Direct local mock extractions fallback when running local dev without Cloud Function emulators
+        console.warn('Cloud Function extraction notice:', extractErr);
+        if (geminiApiKey) {
+          try {
+            const directData = await callDirectGeminiVision(geminiApiKey, base64Data, file.type || 'image/jpeg');
+            await updateDocumentExtractedData(docId, directData, directData.documentType);
+            return;
+          } catch (directErr) {
+            console.warn('Direct Gemini Vision extraction notice:', directErr);
+          }
+        }
         const mockData = generateClientMockExtraction(file.name);
         await updateDocumentExtractedData(docId, mockData, mockData.documentType);
       }
@@ -239,7 +259,7 @@ export default function DocumentsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-outline-variant pb-5">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-[family-name:var(--font-bebas)] text-4xl text-primary tracking-wider">
               DOCUMENT INTELLIGENCE
             </h1>
@@ -247,6 +267,17 @@ export default function DocumentsPage() {
               <Sparkles size={14} className="animate-pulse" />
               Gemini Vision OCR Active
             </span>
+            <button
+              onClick={() => {
+                setTempKeyInput(geminiApiKey);
+                setShowKeyModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1 bg-surface-container hover:bg-surface-container-high text-on-surface-variant border border-outline rounded-full text-xs font-semibold transition-colors"
+              title="Configure Gemini API Key for Live Extraction"
+            >
+              <Key size={13} className="text-primary" />
+              {geminiApiKey ? 'API Key Configured' : 'Set Gemini API Key'}
+            </button>
           </div>
           <p className="text-on-surface-variant text-sm mt-1">
             Upload Bills of Lading, Rate Confirmations, Proof of Delivery, & Receipts with automated handwriting extraction.
@@ -269,6 +300,55 @@ export default function DocumentsPage() {
           onChange={handleFileChange}
         />
       </div>
+
+      {/* Gemini API Key Modal */}
+      {showKeyModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-surface-container-high border border-outline-variant rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2 text-primary font-bold text-lg">
+              <Key size={20} /> Configure Gemini Vision API Key
+            </div>
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              Enter your free Google Gemini API key to enable live OCR vision extraction on all trucking documents (Bills of Lading, Rate Confirmations, PODs, & Receipts).
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-on-surface mb-1">Gemini API Key</label>
+              <input
+                type="password"
+                placeholder="AIzaSy..."
+                value={tempKeyInput}
+                onChange={(e) => setTempKeyInput(e.target.value)}
+                className="w-full bg-surface border border-outline rounded-xl px-3 py-2 text-sm text-on-surface focus:outline-none focus:border-primary"
+              />
+              <p className="text-[11px] text-on-surface-variant/80 mt-1">
+                Don't have a key? Get one for free at{' '}
+                <a
+                  href="https://aistudio.google.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline font-medium"
+                >
+                  Google AI Studio
+                </a>.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-outline-variant">
+              <button
+                onClick={() => setShowKeyModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-on-surface-variant hover:bg-surface-container rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => saveApiKey(tempKeyInput)}
+                className="px-4 py-2 text-xs font-semibold bg-primary text-on-primary rounded-lg hover:bg-primary-hover shadow"
+              >
+                Save Key
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Drag & Drop Upload Zone */}
       <div
@@ -722,4 +802,105 @@ function generateClientMockExtraction(fileName: string): ExtractedDocData {
     bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
     rawText: 'Bill of lading document uploaded',
   };
+}
+
+async function callDirectGeminiVision(
+  apiKey: string,
+  base64Data: string,
+  mimeType: string
+): Promise<ExtractedDocData> {
+  const prompt = `You are a world-class AI document extractor specialized EXCLUSIVELY in Freight & Trucking Logistics documents (Bills of Lading, Rate Confirmations, Proof of Delivery, CAT Scale / Weight Tickets, Fuel / Lumper Receipts).
+
+Extract structured JSON strictly following this schema:
+{
+  "documentType": "bill_of_lading" | "rate_confirmation" | "proof_of_delivery" | "receipt" | "other",
+  "bolNumber": string or null,
+  "rateConfirmationNumber": string or null,
+  "carrierName": string or null,
+  "shipperName": string or null,
+  "consigneeName": string or null,
+  "originAddress": string or null,
+  "destinationAddress": string or null,
+  "pickupDate": string or null,
+  "deliveryDate": string or null,
+  "totalRate": string or null,
+  "weight": string or null,
+  "handwrittenNotes": string or null,
+  "rawText": string or null
+}
+
+Classification Rules for Trucking Documents:
+1. "bill_of_lading": Contains terms like "Bill of Lading", "BOL", "Straight Bill of Lading", Shipper & Consignee info, commodity list, piece counts, trailer/seal #.
+2. "rate_confirmation": Contains "Rate Confirmation", "Confirmation #", "Broker", "Load Agreement", carrier payout/rate ($ amount), linehaul, origin/destination.
+3. "proof_of_delivery": Contains "Proof of Delivery", "POD", "Received By", delivery date/timestamp, consignee signature, or "Delivered".
+4. "receipt": Weight tickets (CAT Scale), Fuel receipts, Lumper receipts, Toll receipts, Maintenance invoices.
+
+Field Rules:
+- Extract numbers, rates (e.g. "$2,400.00"), weights (e.g. "42,000 lbs"), dates (YYYY-MM-DD format if possible).
+- "handwrittenNotes": Extract ONLY actual handwritten driver/receiver handwriting, signatures, stamped text, or modified numbers. If no handwriting is visible, set to null.
+- Return ONLY raw valid JSON.`;
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType.startsWith('image/') ? mimeType : 'image/jpeg',
+              data: base64Data,
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      response_mime_type: 'application/json',
+    },
+  };
+
+  const models = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+  let lastErr: Error | null = null;
+
+  for (const m of models) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey.trim()}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        lastErr = new Error(`API ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!txt) continue;
+      const clean = txt.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      return {
+        documentType: parsed.documentType || 'other',
+        bolNumber: parsed.bolNumber || undefined,
+        rateConfirmationNumber: parsed.rateConfirmationNumber || undefined,
+        carrierName: parsed.carrierName || undefined,
+        shipperName: parsed.shipperName || undefined,
+        consigneeName: parsed.consigneeName || undefined,
+        originAddress: parsed.originAddress || undefined,
+        destinationAddress: parsed.destinationAddress || undefined,
+        pickupDate: parsed.pickupDate || undefined,
+        deliveryDate: parsed.deliveryDate || undefined,
+        totalRate: parsed.totalRate || undefined,
+        weight: parsed.weight || undefined,
+        handwrittenNotes: parsed.handwrittenNotes || undefined,
+        rawText: parsed.rawText || clean,
+        confidence: 0.98,
+      };
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+
+  throw lastErr || new Error('Direct Gemini API call failed.');
 }
