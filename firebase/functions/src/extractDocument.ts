@@ -193,59 +193,29 @@ function generateDevMockExtraction(fileName: string): ExtractedDocData {
   if (lower.includes('rate') || lower.includes('conf')) {
     return {
       documentType: 'rate_confirmation',
-      rateConfirmationNumber: 'RC-99824',
-      carrierName: 'Silver Crown Logistics',
-      shipperName: 'Midwest Distribution Hub, Chicago IL',
-      consigneeName: 'East Coast Fulfillment, Newark NJ',
-      originAddress: '742 Evergreen Terrace, Chicago, IL',
-      destinationAddress: '100 Logistics Way, Newark, NJ',
-      pickupDate: '2026-07-28',
-      deliveryDate: '2026-07-30',
-      totalRate: '$2,850.00',
-      weight: '42,500 lbs',
-      handwrittenNotes: '[Handwritten note: "Driver must call 30 mins before arrival. Gate code #4821"]',
-      rawText: 'RATE CONFIRMATION RC-99824\nCarrier: Silver Crown Logistics\nRate: $2,850.00',
-      confidence: 0.98,
+      rateConfirmationNumber: `RC-${Math.floor(10000 + Math.random() * 90000)}`,
+      rawText: 'Rate confirmation document processed',
+      confidence: 0.95,
     };
   } else if (lower.includes('bol') || lower.includes('lading')) {
     return {
       documentType: 'bill_of_lading',
-      bolNumber: 'BOL-77310-X',
-      shipperName: 'Apex Industrial Supply, Atlanta GA',
-      consigneeName: 'Global Retail Center, Dallas TX',
-      originAddress: '1200 Supply Chain Blvd, Atlanta, GA',
-      destinationAddress: '550 Commerce St, Dallas, TX',
-      pickupDate: '2026-07-26',
-      deliveryDate: '2026-07-28',
-      weight: '38,200 lbs',
-      handwrittenNotes: '[Handwritten note by Receiver: "Pallet #3 slightly scuffed, count verified ok. - J. Smith"]',
-      rawText: 'BILL OF LADING BOL-77310-X\nShipper: Apex Industrial\nConsignee: Global Retail',
-      confidence: 0.96,
+      bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
+      rawText: 'Bill of lading document processed',
+      confidence: 0.95,
     };
   } else if (lower.includes('pod') || lower.includes('delivery')) {
     return {
       documentType: 'proof_of_delivery',
-      bolNumber: 'POD-44109',
-      consigneeName: 'Metro Logistics Center',
-      deliveryDate: new Date().toISOString().split('T')[0],
-      handwrittenNotes: '[Handwritten signature: "Received in good condition - Approved by Mark D."]',
-      rawText: 'PROOF OF DELIVERY\nDelivered clean & clear.',
-      confidence: 0.94,
+      bolNumber: `POD-${Math.floor(10000 + Math.random() * 90000)}`,
+      rawText: 'Proof of delivery document processed',
+      confidence: 0.95,
     };
   }
 
   return {
-    documentType: 'bill_of_lading',
-    bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
-    carrierName: 'Silver Crown PTI Freight',
-    shipperName: 'Central Freight Depot, Indianapolis IN',
-    consigneeName: 'Metro Warehouse Terminal, Columbus OH',
-    pickupDate: new Date().toISOString().split('T')[0],
-    deliveryDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-    totalRate: '$1,950.00',
-    weight: '36,400 lbs',
-    handwrittenNotes: '[Handwritten note: "Seal #88219 intact upon pickup. Driver signed."]',
-    rawText: 'LOGISTICS DOCUMENT\nExtracted via Gemini Vision OCR',
-    confidence: 0.92,
+    documentType: 'other',
+    rawText: 'Document uploaded and processed',
+    confidence: 0.90,
   };
 }

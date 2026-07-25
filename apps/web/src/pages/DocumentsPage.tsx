@@ -713,32 +713,13 @@ function generateClientMockExtraction(fileName: string): ExtractedDocData {
   if (lower.includes('rate') || lower.includes('conf')) {
     return {
       documentType: 'rate_confirmation',
-      rateConfirmationNumber: 'RC-99824',
-      carrierName: 'Silver Crown Logistics',
-      shipperName: 'Midwest Distribution Hub',
-      consigneeName: 'East Coast Fulfillment',
-      originAddress: 'Chicago, IL',
-      destinationAddress: 'Newark, NJ',
-      pickupDate: '2026-07-28',
-      deliveryDate: '2026-07-30',
-      totalRate: '$2,850.00',
-      weight: '42,500 lbs',
-      handwrittenNotes: '[Handwritten: Driver call 30 min prior to arrival. Gate #4]',
-      rawText: 'Rate confirmation extracted via local OCR',
+      rateConfirmationNumber: `RC-${Math.floor(10000 + Math.random() * 90000)}`,
+      rawText: 'Rate confirmation document uploaded',
     };
   }
   return {
     documentType: 'bill_of_lading',
     bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
-    shipperName: 'Apex Supply Co',
-    consigneeName: 'Global Retail Warehouse',
-    originAddress: 'Atlanta, GA',
-    destinationAddress: 'Dallas, TX',
-    pickupDate: new Date().toISOString().split('T')[0],
-    deliveryDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-    totalRate: '$1,950.00',
-    weight: '38,200 lbs',
-    handwrittenNotes: '[Handwritten: Pallet #2 inspected - Seal ok]',
-    rawText: 'Bill of lading document sample',
+    rawText: 'Bill of lading document uploaded',
   };
 }
