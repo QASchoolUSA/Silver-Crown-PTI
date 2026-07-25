@@ -46,7 +46,7 @@ export const extractDocumentData = onCall(async (request) => {
     let extracted: ExtractedDocData;
 
     if (apiKey) {
-      extracted = await callGeminiVisionApi(apiKey, fileUrl, base64Data, fileType);
+      extracted = await callGeminiVisionApi(apiKey, fileUrl, base64Data, fileType, fileName);
     } else {
       // Intelligent fallback when API key is not configured in local environment
       extracted = generateDevMockExtraction(fileName);
@@ -77,7 +77,8 @@ async function callGeminiVisionApi(
   apiKey: string,
   fileUrl: string,
   base64Data?: string,
-  mimeType: string = 'image/jpeg'
+  mimeType: string = 'image/jpeg',
+  fileName?: string
 ): Promise<ExtractedDocData> {
   let imageB64 = base64Data;
 
@@ -177,9 +178,10 @@ Field Rules:
 
       const cleanedText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
       const jsonParsed = JSON.parse(cleanedText);
+      const normDocType = normalizeType(jsonParsed.documentType, jsonParsed.rawText || cleanedText, fileName);
 
       return {
-        documentType: jsonParsed.documentType || 'other',
+        documentType: normDocType,
         bolNumber: jsonParsed.bolNumber || undefined,
         rateConfirmationNumber: jsonParsed.rateConfirmationNumber || undefined,
         carrierName: jsonParsed.carrierName || undefined,
@@ -203,35 +205,65 @@ Field Rules:
   throw lastError || new Error('Failed to extract data with Gemini models.');
 }
 
-function generateDevMockExtraction(fileName: string): ExtractedDocData {
-  const lower = fileName.toLowerCase();
+function normalizeType(
+  rawType?: string,
+  rawText?: string,
+  fileName?: string
+): ExtractedDocData['documentType'] {
+  const text = `${rawType || ''} ${rawText || ''} ${fileName || ''}`.toLowerCase();
 
-  if (lower.includes('rate') || lower.includes('conf')) {
-    return {
-      documentType: 'rate_confirmation',
-      rateConfirmationNumber: `RC-${Math.floor(10000 + Math.random() * 90000)}`,
-      rawText: 'Rate confirmation document processed',
-      confidence: 0.95,
-    };
-  } else if (lower.includes('bol') || lower.includes('lading')) {
-    return {
-      documentType: 'bill_of_lading',
-      bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
-      rawText: 'Bill of lading document processed',
-      confidence: 0.95,
-    };
-  } else if (lower.includes('pod') || lower.includes('delivery')) {
-    return {
-      documentType: 'proof_of_delivery',
-      bolNumber: `POD-${Math.floor(10000 + Math.random() * 90000)}`,
-      rawText: 'Proof of delivery document processed',
-      confidence: 0.95,
-    };
+  if (
+    text.includes('lading') ||
+    text.includes('bol') ||
+    text.includes('straight bill') ||
+    text.includes('shipper') ||
+    text.includes('consignee') ||
+    text.includes('bill of lading')
+  ) {
+    return 'bill_of_lading';
+  }
+  if (
+    text.includes('rate') ||
+    text.includes('confirm') ||
+    text.includes('broker') ||
+    text.includes('linehaul') ||
+    text.includes('carrier pay') ||
+    text.includes('flat rate')
+  ) {
+    return 'rate_confirmation';
+  }
+  if (
+    text.includes('delivery') ||
+    text.includes('pod') ||
+    text.includes('received by') ||
+    text.includes('consignee signature') ||
+    text.includes('proof of delivery')
+  ) {
+    return 'proof_of_delivery';
+  }
+  if (
+    text.includes('scale') ||
+    text.includes('cat scale') ||
+    text.includes('gross') ||
+    text.includes('tare') ||
+    text.includes('receipt') ||
+    text.includes('fuel') ||
+    text.includes('lumper') ||
+    text.includes('weight ticket')
+  ) {
+    return 'receipt';
   }
 
+  return 'bill_of_lading';
+}
+
+function generateDevMockExtraction(fileName: string): ExtractedDocData {
+  const docType = normalizeType(undefined, undefined, fileName);
+
   return {
-    documentType: 'other',
-    rawText: 'Document uploaded and processed',
-    confidence: 0.90,
+    documentType: docType,
+    bolNumber: `BOL-${Math.floor(100000 + Math.random() * 900000)}`,
+    rawText: 'Bill of lading freight document uploaded and processed',
+    confidence: 0.95,
   };
 }

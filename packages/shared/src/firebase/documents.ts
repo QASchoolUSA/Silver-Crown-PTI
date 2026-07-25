@@ -13,9 +13,13 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFirebaseDb, getFirebaseStorage } from './config';
-import type { CompanyDocument, DocumentType, ExtractedDocData } from '../types';
+import { type CompanyDocument, type DocumentType, type ExtractedDocData, normalizeDocumentType } from '../types';
 
 function mapDocument(id: string, data: Record<string, unknown>): CompanyDocument {
+  const extracted = data.extractedData as ExtractedDocData | undefined;
+  const rawType = (data.docType as string) || extracted?.documentType;
+  const normType = normalizeDocumentType(rawType, extracted?.rawText, data.fileName as string);
+
   return {
     id,
     companyId: data.companyId as string,
@@ -24,9 +28,14 @@ function mapDocument(id: string, data: Record<string, unknown>): CompanyDocument
     fileName: data.fileName as string,
     fileUrl: data.fileUrl as string,
     fileType: (data.fileType as string) || 'image/jpeg',
-    docType: (data.docType as DocumentType) || 'other',
+    docType: normType,
     status: (data.status as 'processing' | 'processed' | 'error') || 'processed',
-    extractedData: data.extractedData as ExtractedDocData | undefined,
+    extractedData: extracted
+      ? {
+          ...extracted,
+          documentType: normType,
+        }
+      : undefined,
     loadId: data.loadId as string | undefined,
     errorMessage: data.errorMessage as string | undefined,
     createdAt: (data.createdAt as string) || new Date().toISOString(),

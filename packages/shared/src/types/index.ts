@@ -177,3 +177,56 @@ export interface CompanyDocument {
   createdAt: string;
 }
 
+export function normalizeDocumentType(
+  rawType?: string,
+  rawText?: string,
+  fileName?: string
+): DocumentType {
+  const text = `${rawType || ''} ${rawText || ''} ${fileName || ''}`.toLowerCase();
+
+  if (
+    text.includes('lading') ||
+    text.includes('bol') ||
+    text.includes('straight bill') ||
+    text.includes('shipper') ||
+    text.includes('consignee') ||
+    text.includes('bill of lading')
+  ) {
+    return 'bill_of_lading';
+  }
+  if (
+    text.includes('rate') ||
+    text.includes('confirm') ||
+    text.includes('broker') ||
+    text.includes('linehaul') ||
+    text.includes('carrier pay') ||
+    text.includes('flat rate')
+  ) {
+    return 'rate_confirmation';
+  }
+  if (
+    text.includes('delivery') ||
+    text.includes('pod') ||
+    text.includes('received by') ||
+    text.includes('consignee signature') ||
+    text.includes('proof of delivery')
+  ) {
+    return 'proof_of_delivery';
+  }
+  if (
+    text.includes('scale') ||
+    text.includes('cat scale') ||
+    text.includes('gross') ||
+    text.includes('tare') ||
+    text.includes('receipt') ||
+    text.includes('fuel') ||
+    text.includes('lumper') ||
+    text.includes('weight ticket')
+  ) {
+    return 'receipt';
+  }
+
+  // Default freight document type to Bill of Lading for trucking paperwork
+  return 'bill_of_lading';
+}
+
