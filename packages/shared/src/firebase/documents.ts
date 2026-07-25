@@ -107,8 +107,21 @@ export interface CreateDocumentInput {
   extractedData?: ExtractedDocData;
 }
 
+export function sanitizeFirestoreData(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = sanitizeFirestoreData(value as Record<string, unknown>);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export async function createDocumentRecord(input: CreateDocumentInput): Promise<string> {
-  const docRef = await addDoc(collection(getFirebaseDb(), 'documents'), {
+  const rawPayload: Record<string, unknown> = {
     companyId: input.companyId,
     uploadedBy: input.uploadedBy,
     uploaderName: input.uploaderName,
@@ -118,9 +131,12 @@ export async function createDocumentRecord(input: CreateDocumentInput): Promise<
     docType: input.docType || 'other',
     status: input.status || 'processing',
     loadId: input.loadId || null,
-    extractedData: input.extractedData || null,
+    extractedData: input.extractedData ? sanitizeFirestoreData(input.extractedData as unknown as Record<string, unknown>) : null,
     createdAt: new Date().toISOString(),
-  });
+  };
+
+  const sanitizedPayload = sanitizeFirestoreData(rawPayload);
+  const docRef = await addDoc(collection(getFirebaseDb(), 'documents'), sanitizedPayload);
   return docRef.id;
 }
 
@@ -130,14 +146,16 @@ export async function updateDocumentExtractedData(
   docType?: DocumentType,
   loadId?: string
 ): Promise<void> {
+  const sanitizedExtracted = sanitizeFirestoreData(extractedData as unknown as Record<string, unknown>);
   const updates: Record<string, unknown> = {
-    extractedData,
+    extractedData: sanitizedExtracted,
     status: 'processed',
   };
   if (docType) updates.docType = docType;
   if (loadId !== undefined) updates.loadId = loadId;
 
-  await updateDoc(doc(getFirebaseDb(), 'documents', docId), updates);
+  const sanitizedUpdates = sanitizeFirestoreData(updates);
+  await updateDoc(doc(getFirebaseDb(), 'documents', docId), sanitizedUpdates);
 }
 
 export async function deleteCompanyDocument(docId: string): Promise<void> {

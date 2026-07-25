@@ -182,7 +182,7 @@ export function parseFreightText(
     handwrittenNotes = noteMatch[1].trim();
   }
 
-  return {
+  const rawObj: Record<string, unknown> = {
     documentType: docType,
     bolNumber,
     rateConfirmationNumber,
@@ -196,4 +196,13 @@ export function parseFreightText(
     rawText: text,
     confidence: text.length > 50 ? 0.92 : 0.60,
   };
+
+  const cleaned: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rawObj)) {
+    if (v !== undefined) {
+      cleaned[k] = v;
+    }
+  }
+
+  return cleaned as unknown as ExtractedDocData;
 }
