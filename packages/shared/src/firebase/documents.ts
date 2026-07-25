@@ -70,9 +70,20 @@ export async function uploadDocumentFile(
   file: File | Blob,
   fileName: string
 ): Promise<string> {
-  const storageRef = ref(getFirebaseStorage(), `companies/${companyId}/documents/${docId}_${fileName}`);
-  const snap = await uploadBytes(storageRef, file);
-  return getDownloadURL(snap.ref);
+  try {
+    const contentType = (file as File).type || 'image/jpeg';
+    const storageRef = ref(getFirebaseStorage(), `companies/${companyId}/documents/${docId}_${fileName}`);
+    const snap = await uploadBytes(storageRef, file, { contentType });
+    return await getDownloadURL(snap.ref);
+  } catch (err) {
+    console.warn('Firebase Storage upload notice (falling back to inline data URL):', err);
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string) || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  }
 }
 
 export interface CreateDocumentInput {
