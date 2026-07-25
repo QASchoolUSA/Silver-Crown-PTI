@@ -13,7 +13,8 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFirebaseDb, getFirebaseStorage } from './config';
-import { type CompanyDocument, type DocumentType, type ExtractedDocData, normalizeDocumentType } from '../types';
+import { type CompanyDocument, type DocumentType, type ExtractedDocData } from '../types';
+import { normalizeDocumentType } from '../utils/freightParser';
 
 function mapDocument(id: string, data: Record<string, unknown>): CompanyDocument {
   const extracted = data.extractedData as ExtractedDocData | undefined;

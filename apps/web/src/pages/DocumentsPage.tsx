@@ -30,6 +30,7 @@ import {
   type DocumentType,
   type ExtractedDocData,
   type Load,
+  optimizeDocumentImageForOCR,
 } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
 
@@ -107,24 +108,14 @@ export default function DocumentsPage() {
       setUploading(true);
       setUploadProgress('Uploading file to secure storage...');
 
-      // 1. Convert file to base64 for fast API transmission if needed
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const res = reader.result as string;
-          const base64Clean = res.split(',')[1] || res;
-          resolve(base64Clean);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // 1. Automatically preprocess and enhance image on canvas (2048px max dimension, contrast sharpened)
+      setUploadProgress('Enhancing & optimizing document image for OCR...');
+      const { base64Data, mimeType } = await optimizeDocumentImageForOCR(file, 2048);
 
       // 2. Create Initial Firestore Document Record with 'processing' status
       const docTypeHint: DocumentType = file.name.toLowerCase().includes('rate')
         ? 'rate_confirmation'
-        : file.name.toLowerCase().includes('bol')
-        ? 'bill_of_lading'
-        : 'other';
+        : 'bill_of_lading';
 
       const tempId = `doc_${Date.now()}`;
       const fileUrl = await uploadDocumentFile(profile.companyId, tempId, file, file.name);
@@ -135,7 +126,7 @@ export default function DocumentsPage() {
         uploaderName: profile.displayName || 'Admin',
         fileName: file.name,
         fileUrl,
-        fileType: file.type || 'image/jpeg',
+        fileType: mimeType || file.type || 'image/jpeg',
         docType: docTypeHint,
         status: 'processing',
       });

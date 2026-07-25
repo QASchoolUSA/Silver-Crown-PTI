@@ -98,9 +98,9 @@ async function callGeminiVisionApi(
 
   const prompt = `You are a world-class AI document extractor specialized EXCLUSIVELY in Freight & Trucking Logistics documents (Bills of Lading, Rate Confirmations, Proof of Delivery, CAT Scale / Weight Tickets, Fuel / Lumper Receipts).
 
-Your job is to read the attached document image (which contains printed text, logos, tables, stamps, or handwritten notes) and extract all freight details.
-
-Extract structured JSON strictly following this schema:
+Perform a 2-stage analysis of this document image:
+STAGE 1: Transcribe ALL text on the page into "rawText" (including headers, table cells, stamps, seal numbers, and handwritten notes).
+STAGE 2: Extract structured JSON matching this exact schema:
 {
   "documentType": "bill_of_lading" | "rate_confirmation" | "proof_of_delivery" | "receipt" | "other",
   "bolNumber": string or null,
@@ -115,11 +115,11 @@ Extract structured JSON strictly following this schema:
   "totalRate": string or null,
   "weight": string or null,
   "handwrittenNotes": string or null,
-  "rawText": string or null
+  "rawText": string
 }
 
-Classification Rules for Trucking Documents:
-1. "bill_of_lading": Contains terms like "Bill of Lading", "BOL", "Straight Bill of Lading", Shipper & Consignee info, commodity list, piece counts, trailer/seal #.
+Classification Rules:
+1. "bill_of_lading": Contains terms like "Bill of Lading", "BOL", "Straight Bill of Lading", Shipper, Consignee, commodity list, piece counts, trailer/seal #.
 2. "rate_confirmation": Contains "Rate Confirmation", "Confirmation #", "Broker", "Load Agreement", carrier payout/rate ($ amount), linehaul, origin/destination.
 3. "proof_of_delivery": Contains "Proof of Delivery", "POD", "Received By", delivery date/timestamp, consignee signature, or "Delivered".
 4. "receipt": Weight tickets (CAT Scale), Fuel receipts, Lumper receipts, Toll receipts, Maintenance invoices.
@@ -149,8 +149,8 @@ Field Rules:
     },
   };
 
-  // Use valid Gemini Flash model endpoints (gemini-1.5-flash / gemini-2.0-flash)
-  const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+  // Preferred model cascade: gemini-2.0-flash -> gemini-1.5-pro -> gemini-1.5-flash
+  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
   let lastError: Error | null = null;
 
   for (const modelName of modelsToTry) {
@@ -178,12 +178,19 @@ Field Rules:
 
       const cleanedText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
       const jsonParsed = JSON.parse(cleanedText);
-      const normDocType = normalizeType(jsonParsed.documentType, jsonParsed.rawText || cleanedText, fileName);
+
+      // Heuristic fallback text parsing to fill any missing fields from rawText
+      const rawBody = jsonParsed.rawText || cleanedText;
+      const normDocType = normalizeType(jsonParsed.documentType, rawBody, fileName);
+      const regexBol = rawBody.match(/(?:BOL|B\/L|Bill\s*of\s*Lading|Order|Ref)\s*[:#\s]*([A-Z0-9-]{4,25})/i);
+      const regexRateConf = rawBody.match(/(?:Rate\s*Conf|Confirmation|Load|Agmt)\s*[:#\s]*([A-Z0-9-]{4,20})/i);
+      const regexWeight = rawBody.match(/(?:Gross|Net|Weight|Total\s*Wt)\s*[:#\s]*([0-9,]{4,7}\s*(?:lbs|lb)?)/i);
+      const regexRate = rawBody.match(/(?:Total\s*Rate|Total\s*Pay|Linehaul|Amount)\s*[:#\s]*(\$\s*[0-9,]+(?:\.[0-9]{2})?)/i);
 
       return {
         documentType: normDocType,
-        bolNumber: jsonParsed.bolNumber || undefined,
-        rateConfirmationNumber: jsonParsed.rateConfirmationNumber || undefined,
+        bolNumber: jsonParsed.bolNumber || regexBol?.[1]?.trim() || undefined,
+        rateConfirmationNumber: jsonParsed.rateConfirmationNumber || regexRateConf?.[1]?.trim() || undefined,
         carrierName: jsonParsed.carrierName || undefined,
         shipperName: jsonParsed.shipperName || undefined,
         consigneeName: jsonParsed.consigneeName || undefined,
@@ -191,10 +198,10 @@ Field Rules:
         destinationAddress: jsonParsed.destinationAddress || undefined,
         pickupDate: jsonParsed.pickupDate || undefined,
         deliveryDate: jsonParsed.deliveryDate || undefined,
-        totalRate: jsonParsed.totalRate || undefined,
-        weight: jsonParsed.weight || undefined,
+        totalRate: jsonParsed.totalRate || regexRate?.[1]?.trim() || undefined,
+        weight: jsonParsed.weight || regexWeight?.[1]?.trim() || undefined,
         handwrittenNotes: jsonParsed.handwrittenNotes || undefined,
-        rawText: jsonParsed.rawText || cleanedText,
+        rawText: rawBody,
         confidence: 0.98,
       };
     } catch (e) {
