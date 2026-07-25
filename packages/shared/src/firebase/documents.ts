@@ -76,13 +76,11 @@ export async function uploadDocumentFile(
     const snap = await uploadBytes(storageRef, file, { contentType });
     return await getDownloadURL(snap.ref);
   } catch (err) {
-    console.warn('Firebase Storage upload notice (falling back to inline data URL):', err);
-    return new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve((reader.result as string) || '');
-      reader.onerror = () => resolve('');
-      reader.readAsDataURL(file);
-    });
+    console.warn('Firebase Storage upload notice (falling back to object URL):', err);
+    if (typeof window !== 'undefined' && window.URL && window.URL.createObjectURL) {
+      return window.URL.createObjectURL(file);
+    }
+    return '';
   }
 }
 

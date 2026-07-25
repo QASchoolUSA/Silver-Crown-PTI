@@ -82,9 +82,7 @@ service cloud.firestore {
     }
 
     match /documents/{docId} {
-      allow read: if isSignedIn() && resource.data.companyId == userCompanyId();
-      allow create: if isSignedIn() && request.resource.data.companyId == userCompanyId();
-      allow update, delete: if isSignedIn() && resource.data.companyId == userCompanyId();
+      allow read, create, update, delete: if isSignedIn();
     }
   }
 }

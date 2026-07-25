@@ -168,9 +168,10 @@ export default function DocumentsPage() {
         const mockData = generateClientMockExtraction(file.name);
         await updateDocumentExtractedData(docId, mockData, mockData.documentType);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('File upload error:', error);
-      alert('Error uploading document. Please try again.');
+      const errMsg = error instanceof Error ? error.message : String(error);
+      alert(`Error uploading document: ${errMsg}`);
     } finally {
       setUploading(false);
       setUploadProgress('');
