@@ -49,7 +49,10 @@ export function rateConDraftToCreateLoadInput(
 
   return {
     companyId,
-    assignedDriverId: null,
+    assignedDriverId: draft.assignedDriverId || null,
+    assignedDriverName: draft.assignedDriverId
+      ? draft.assignedDriverName?.trim() || undefined
+      : undefined,
     stops,
     payout: draft.payout!.replace(/[$,]/g, ''),
     miles: (draft.miles || '0').replace(/[,]/g, ''),

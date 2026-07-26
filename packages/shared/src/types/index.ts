@@ -99,6 +99,8 @@ export interface RateConDraft {
   deliveryDate?: string;
   dispatchDate?: string;
   weight?: string;
+  assignedDriverId?: string | null;
+  assignedDriverName?: string;
   stops: RateConStop[];
   confidence?: number;
   warnings?: string[];

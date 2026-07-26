@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   AlertTriangle,
@@ -18,9 +18,11 @@ import {
   createLoadsFromDrafts,
   createStopDraftFromStop,
   draftsToStops,
+  getCompanyDrivers,
   isLikelyPodFile,
   uploadDocumentFile,
   validateRateConDraft,
+  type AppUser,
   type RateConDraft,
   type RateConStop,
   type StopDraft,
@@ -60,13 +62,38 @@ export default function ImportLoadsPage() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<ImportItem[]>([]);
+  const [drivers, setDrivers] = useState<AppUser[]>([]);
+  const [batchDriverId, setBatchDriverId] = useState('');
   const [dragging, setDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState('');
 
+  // Read inside async queue work so a mid-run change still applies.
+  const batchDriverRef = useRef('');
+
+  useEffect(() => {
+    if (profile?.companyId) getCompanyDrivers(profile.companyId).then(setDrivers);
+  }, [profile?.companyId]);
+
+  const driverAssignment = (driverId: string) => ({
+    assignedDriverId: driverId || null,
+    assignedDriverName: drivers.find((driver) => driver.uid === driverId)?.displayName,
+  });
+
   const patchItem = (id: string, patch: Partial<ImportItem>) => {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  };
+
+  const applyBatchDriver = (driverId: string) => {
+    setBatchDriverId(driverId);
+    batchDriverRef.current = driverId;
+    const assignment = driverAssignment(driverId);
+    setItems((current) =>
+      current.map((item) =>
+        item.draft ? { ...item, draft: { ...item.draft, ...assignment } } : item
+      )
+    );
   };
 
   const addFiles = (files: File[]) => {
@@ -130,6 +157,7 @@ export default function ImportLoadsPage() {
         ...extractedDraft,
         sourceFile: item.file.name,
         documentId,
+        ...driverAssignment(batchDriverRef.current),
       };
       if (!draft.miles && draft.stops.length >= 2) {
         patchItem(item.id, { message: 'Calculating truck route miles…' });
@@ -309,12 +337,29 @@ export default function ImportLoadsPage() {
 
       {items.length > 0 && (
         <section className="mt-8">
-          <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-4">
             <div>
               <h2 className="font-semibold text-lg">{items.length} files in batch</h2>
               <p className="text-on-surface-variant text-sm">{readySelected} reviewed and ready</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="block">
+                <span className="block text-xs uppercase tracking-wider text-on-surface-variant mb-1.5">
+                  Assign whole batch to
+                </span>
+                <select
+                  value={batchDriverId}
+                  onChange={(event) => applyBatchDriver(event.target.value)}
+                  className="bg-surface-container-high border border-outline-variant px-3 py-2 text-sm outline-none focus:border-primary"
+                >
+                  <option value="">Unassigned</option>
+                  {drivers.map((driver) => (
+                    <option key={driver.uid} value={driver.uid}>
+                      {driver.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 disabled={processing || !items.some((item) => item.status === 'queued' || item.status === 'error')}
@@ -339,6 +384,7 @@ export default function ImportLoadsPage() {
               <ImportRow
                 key={item.id}
                 item={item}
+                drivers={drivers}
                 patchItem={patchItem}
                 updateDraft={updateDraft}
                 updateStops={updateStops}
@@ -354,12 +400,14 @@ export default function ImportLoadsPage() {
 
 function ImportRow({
   item,
+  drivers,
   patchItem,
   updateDraft,
   updateStops,
   recalculateMiles,
 }: {
   item: ImportItem;
+  drivers: AppUser[];
   patchItem: (id: string, patch: Partial<ImportItem>) => void;
   updateDraft: (id: string, patch: Partial<RateConDraft>) => void;
   updateStops: (item: ImportItem, pickups: StopDraft[], dropoffs: StopDraft[]) => void;
@@ -397,7 +445,9 @@ function ImportRow({
           <p className="text-on-surface-variant text-xs mt-1">
             {item.message ||
               (draft
-                ? `${draft.broker || 'Broker needed'} · ${draft.loadRef || 'Load # needed'} · ${stopCountLabel}`
+                ? `${draft.broker || 'Broker needed'} · ${draft.loadRef || 'Load # needed'} · ${stopCountLabel} · ${
+                    draft.assignedDriverName || 'Unassigned'
+                  }`
                 : item.status)}
           </p>
         </div>
@@ -449,6 +499,28 @@ function ImportRow({
                 <option>Dry Van</option>
                 <option>Reefer</option>
                 <option>Flatbed</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-xs uppercase tracking-wider text-on-surface-variant mb-1.5">Driver</span>
+              <select
+                value={draft.assignedDriverId || ''}
+                onChange={(event) => {
+                  const assignedDriverId = event.target.value;
+                  updateDraft(item.id, {
+                    assignedDriverId: assignedDriverId || null,
+                    assignedDriverName: drivers.find((driver) => driver.uid === assignedDriverId)
+                      ?.displayName,
+                  });
+                }}
+                className="w-full bg-surface-container-high border border-outline-variant px-3 py-2.5 text-sm outline-none focus:border-primary"
+              >
+                <option value="">Unassigned</option>
+                {drivers.map((driver) => (
+                  <option key={driver.uid} value={driver.uid}>
+                    {driver.displayName}
+                  </option>
+                ))}
               </select>
             </label>
             <Field label="Dispatch date" type="date" value={draft.dispatchDate || ''} onChange={(dispatchDate) => updateDraft(item.id, { dispatchDate })} />

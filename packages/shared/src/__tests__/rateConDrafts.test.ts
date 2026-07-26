@@ -50,6 +50,26 @@ describe('rateConDrafts', () => {
     expect(input.loadRef).toBe('LD-123');
   });
 
+  it('carries an assigned driver into create-load input', () => {
+    const input = rateConDraftToCreateLoadInput('company-1', {
+      ...draft,
+      assignedDriverId: 'driver-9',
+      assignedDriverName: 'Alexey Kedrov',
+    });
+    expect(input.assignedDriverId).toBe('driver-9');
+    expect(input.assignedDriverName).toBe('Alexey Kedrov');
+  });
+
+  it('drops a stale driver name when no driver is assigned', () => {
+    const input = rateConDraftToCreateLoadInput('company-1', {
+      ...draft,
+      assignedDriverId: null,
+      assignedDriverName: 'Alexey Kedrov',
+    });
+    expect(input.assignedDriverId).toBeNull();
+    expect(input.assignedDriverName).toBeUndefined();
+  });
+
   it('recognizes excluded POD filenames', () => {
     expect(isLikelyPodFile('CamScanner 1-24-26.pdf')).toBe(true);
     expect(isLikelyPodFile('Carrier_Rate_Confirmation_123.pdf')).toBe(false);
