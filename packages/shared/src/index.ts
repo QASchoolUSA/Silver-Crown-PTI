@@ -22,3 +22,4 @@ export * from './utils/stopDrafts';
 export * from './utils/freightParser';
 export * from './utils/imagePreprocess';
 export * from './utils/rateConDrafts';
+export * from './utils/rateConParser';

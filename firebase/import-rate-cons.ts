@@ -1,29 +1,29 @@
 /**
- * Batch rate-confirmation importer.
+ * Batch rate-confirmation importer (free hybrid extract — no Gemini).
  *
  * Examples:
  *   pnpm import:rate-cons -- --dir "/path/to/document"
  *   pnpm import:rate-cons -- --dir "/path/to/document" --confirm --status=delivered
  *
- * Without --confirm, uploads/extracts/routs files and writes a reviewable JSON manifest.
+ * Without --confirm, uploads/extracts files and writes a reviewable JSON manifest.
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 import { doc, getDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
   calculateRateConRouteMiles,
   createDocumentRecord,
   createLoadsFromDrafts,
   getFirebaseAuth,
   getFirebaseDb,
-  getFirebaseFunctions,
   initFirebase,
   isLikelyPodFile,
+  parseRateConfirmation,
+  updateDocumentExtractedData,
   uploadDocumentFile,
-  type ExtractedDocData,
   type LoadStatus,
   type RateConDraft,
 } from '../packages/shared/src';
@@ -48,6 +48,31 @@ const dataDir =
 const shouldConfirm = args.includes('--confirm');
 const status = (readArg('--status') || 'available') as LoadStatus;
 const outputPath = readArg('--output') || path.resolve(process.cwd(), 'rate-con-import-drafts.json');
+
+async function extractPdfText(bytes: Buffer): Promise<string> {
+  const doc = await getDocument({ data: new Uint8Array(bytes), disableWorker: true }).promise;
+  const pages: string[] = [];
+  const limit = Math.min(doc.numPages, 8);
+  for (let i = 1; i <= limit; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    let pageText = '';
+    let lastY: number | null = null;
+    for (const item of content.items) {
+      if (!('str' in item) || !item.str) continue;
+      const y = Array.isArray(item.transform) ? Number(item.transform[5]) : null;
+      if (lastY != null && y != null && Math.abs(lastY - y) > 2) {
+        pageText += '\n';
+      } else if (pageText && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
+        pageText += ' ';
+      }
+      pageText += item.str;
+      if (y != null) lastY = y;
+    }
+    pages.push(pageText);
+  }
+  return pages.join('\n');
+}
 
 async function main() {
   if (!fs.existsSync(dataDir)) throw new Error(`Directory not found: ${dataDir}`);
@@ -86,7 +111,7 @@ async function main() {
     .sort();
   if (files.length === 0) throw new Error('No rate-confirmation PDF candidates found.');
 
-  console.log(`Extracting ${files.length} PDFs from ${dataDir}`);
+  console.log(`Extracting ${files.length} PDFs from ${dataDir} (free hybrid parser)`);
   const drafts: RateConDraft[] = [];
   const failures: Array<{ sourceFile: string; error: string }> = [];
 
@@ -94,6 +119,16 @@ async function main() {
     process.stdout.write(`[${index + 1}/${files.length}] ${fileName} ... `);
     try {
       const bytes = fs.readFileSync(path.join(dataDir, fileName));
+      const rawText = await extractPdfText(bytes);
+      const parsed = parseRateConfirmation(rawText, fileName);
+      if (parsed.documentType !== 'rate_confirmation' || !parsed.draft) {
+        throw new Error(
+          parsed.documentType === 'proof_of_delivery'
+            ? 'Looks like a POD'
+            : 'Not recognized as a rate confirmation'
+        );
+      }
+
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const storageKey = `ratecon_batch_${Date.now()}_${index}`;
       const fileUrl = await uploadDocumentFile(companyId, storageKey, blob, fileName);
@@ -106,27 +141,34 @@ async function main() {
         fileType: 'application/pdf',
         docType: 'rate_confirmation',
         status: 'processing',
+        extractedData: {
+          documentType: 'rate_confirmation',
+          rateConfirmationNumber: parsed.draft.loadRef,
+          totalRate: parsed.draft.payout ? `$${parsed.draft.payout}` : undefined,
+          pickupDate: parsed.draft.pickupDate,
+          deliveryDate: parsed.draft.deliveryDate,
+          rawText: parsed.rawText,
+          confidence: parsed.confidence,
+          rateConDraft: { ...parsed.draft, sourceFile: fileName },
+        },
       });
-
-      const extract = httpsCallable<
-        { documentId: string; fileUrl: string; fileName: string; fileType: string },
-        { success: boolean; extractedData: ExtractedDocData }
-      >(getFirebaseFunctions(), 'extractDocumentData');
-      const result = await extract({
+      await updateDocumentExtractedData(
         documentId,
-        fileUrl,
-        fileName,
-        fileType: 'application/pdf',
-      });
-      if (
-        result.data.extractedData.documentType !== 'rate_confirmation'
-        || !result.data.extractedData.rateConDraft
-      ) {
-        throw new Error('Not recognized as a rate confirmation');
-      }
+        {
+          documentType: 'rate_confirmation',
+          rateConfirmationNumber: parsed.draft.loadRef,
+          totalRate: parsed.draft.payout ? `$${parsed.draft.payout}` : undefined,
+          pickupDate: parsed.draft.pickupDate,
+          deliveryDate: parsed.draft.deliveryDate,
+          rawText: parsed.rawText,
+          confidence: parsed.confidence,
+          rateConDraft: { ...parsed.draft, sourceFile: fileName, documentId },
+        },
+        'rate_confirmation'
+      );
 
       let draft: RateConDraft = {
-        ...result.data.extractedData.rateConDraft,
+        ...parsed.draft,
         sourceFile: fileName,
         documentId,
       };

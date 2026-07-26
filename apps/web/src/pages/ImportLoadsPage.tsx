@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { httpsCallable } from 'firebase/functions';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -19,18 +18,16 @@ import {
   createLoadsFromDrafts,
   createStopDraftFromStop,
   draftsToStops,
-  getFirebaseFunctions,
   isLikelyPodFile,
-  optimizeDocumentImageForOCR,
   uploadDocumentFile,
   validateRateConDraft,
-  type ExtractedDocData,
   type RateConDraft,
   type RateConStop,
   type StopDraft,
 } from '@silver-crown/shared';
 import StopAddressEditor from '../components/StopAddressEditor';
 import { useAuth } from '../context/AuthContext';
+import { extractRateConLocal } from '../utils/extractRateConLocal';
 
 type QueueStatus = 'queued' | 'uploading' | 'extracting' | 'ready' | 'error';
 
@@ -42,11 +39,6 @@ interface ImportItem {
   expanded: boolean;
   message?: string;
   draft?: RateConDraft;
-}
-
-interface ExtractRateConResponse {
-  success: boolean;
-  extractedData: ExtractedDocData;
 }
 
 const acceptedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
@@ -129,35 +121,13 @@ export default function ImportLoadsPage() {
       });
 
       patchItem(item.id, { status: 'extracting', message: 'Reading rate confirmation…' });
-      const extract = httpsCallable<
-        {
-          documentId: string;
-          fileUrl: string;
-          fileName: string;
-          fileType: string;
-          base64Data?: string;
-        },
-        ExtractRateConResponse
-      >(getFirebaseFunctions(), 'extractDocumentData');
-
-      let base64Data: string | undefined;
-      if (item.file.type.startsWith('image/')) {
-        base64Data = (await optimizeDocumentImageForOCR(item.file, 2400)).base64Data;
-      }
-      const response = await extract({
+      const { draft: extractedDraft } = await extractRateConLocal(item.file, {
         documentId,
-        fileUrl,
-        fileName: item.file.name,
-        fileType: item.file.type || 'application/pdf',
-        base64Data,
+        onProgress: (message) => patchItem(item.id, { message }),
       });
-      const extracted = response.data.extractedData;
-      if (extracted.documentType !== 'rate_confirmation' || !extracted.rateConDraft) {
-        throw new Error('This file was not recognized as a rate confirmation.');
-      }
 
       let draft: RateConDraft = {
-        ...extracted.rateConDraft,
+        ...extractedDraft,
         sourceFile: item.file.name,
         documentId,
       };
