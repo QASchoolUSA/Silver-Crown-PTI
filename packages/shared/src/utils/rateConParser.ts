@@ -34,11 +34,12 @@ const BROKER_PATTERNS: Array<{ pat: RegExp; name: string }> = [
   { pat: /Allys Transportation|allystrans\.com/i, name: 'Allys Transportation' },
   { pat: /Nolan Transportation Group|\bNTG\b/i, name: 'NTG' },
   { pat: /Spot Freight|MySpotCarrier/i, name: 'Spot Freight' },
-  { pat: /ATN,?\s*LLC|ATN Global/i, name: 'ATN' },
+  { pat: /ATN,?\s*LLC|ATN Global|atnglobal\.com/i, name: 'ATN' },
   { pat: /Ryan Transportation|RyanTrans/i, name: 'Ryan Transportation' },
   { pat: /Landstar/i, name: 'Landstar' },
   { pat: /GlobalTranz|globaltranz\.com/i, name: 'GlobalTranz' },
-  { pat: /NFI|nfiindustries\.com|Transfix/i, name: 'NFI / Transplace' },
+  { pat: /BM2\s*Freight|bm2freight\.com/i, name: 'BM2 Freight' },
+  { pat: /\bNFI\b|nfiindustries\.com|Transplace/i, name: 'NFI / Transplace' },
   { pat: /Total Quality Logistics|\bTQL\b/i, name: 'TQL' },
   { pat: /CH Robinson|C\.H\. Robinson/i, name: 'CH Robinson' },
   { pat: /Echo Global/i, name: 'Echo Global' },
@@ -70,12 +71,15 @@ function normalizeLoadId(raw: string): string {
 }
 
 function normalizeSpacedText(text: string): string {
-  return text
+  const cleaned = text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+    .replace(/[^\S\n]+/g, ' ');
+  return cleaned
     .split('\n')
     .map((line) =>
       /(?:[A-Za-z0-9]\s){4,}[A-Za-z0-9]/.test(line)
         ? line.replace(/(?<=[A-Za-z0-9])\s+(?=[A-Za-z0-9])/g, '')
-        : line
+        : line.trimEnd()
     )
     .join('\n');
 }
@@ -97,6 +101,15 @@ function filenameLoadId(filename: string): string | undefined {
 
 function sanitizeAddress(raw: string): string {
   return raw.replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
+}
+
+function titleCaseWords(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
 function toIsoDate(raw: string | undefined): string | undefined {
@@ -156,6 +169,7 @@ function parseLoadId(text: string, filename: string): string {
   }
 
   const patterns: Array<{ pat: RegExp; prefix?: string }> = [
+    { pat: /Load Number:\s*([A-Z0-9-]+)/i },
     { pat: /RATE CONFIRMATION #\s*(AT41M\d+)/i },
     { pat: /Reference:\s*(\d+)\s*\(BOL\)/i },
     { pat: /Load\s*#\s*(\d+)/i },
@@ -325,6 +339,133 @@ function parseAllysStops(text: string): RateConStop[] {
   return stops;
 }
 
+/**
+ * ATN / Brown style: PICK N / STOP N with CITY ST ZIP (no comma).
+ */
+function parseAtnStops(text: string): RateConStop[] {
+  if (!/\bPICK\s+\d/i.test(text) || !/\bSTOP\s+\d/i.test(text)) return [];
+
+  const stops: RateConStop[] = [];
+  const blocks = [
+    ...text.matchAll(
+      /\b(PICK|STOP)\s+(\d+)\s*\n([\s\S]*?)(?=\n(?:PICK|STOP|DEL)\s+\d|\nCARRIER MUST|\nTERMS AND CONDITIONS|$)/gi
+    ),
+  ];
+
+  for (const block of blocks) {
+    const kind = block[1].toUpperCase() === 'PICK' ? 'pickup' : 'dropoff';
+    const body = block[3];
+    const lines = body
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .filter((l) => !/^(pieces|weight|ref\s*#|appt notes)/i.test(l));
+
+    let cityLine: string | undefined;
+    let street: string | undefined;
+    let facility: string | undefined;
+
+    for (const line of lines.slice(0, 8)) {
+      const cityMatch = line.match(/^([A-Z][A-Z\s'.-]+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\b/);
+      if (cityMatch && US_STATE_CODES.has(cityMatch[2])) {
+        const city = titleCaseWords(cityMatch[1].trim());
+        cityLine = `${city}, ${cityMatch[2]} ${cityMatch[3]}`;
+        break;
+      }
+    }
+
+    for (const line of lines.slice(0, 6)) {
+      const cleaned = line.replace(/\s+Appointment\b.*$/i, '').trim();
+      if (!cleaned || cleaned === cityLine) continue;
+      if (/appt notes|pieces|weight|ref\s*#/i.test(cleaned)) continue;
+      if (
+        /\d/.test(cleaned)
+        && /(st|street|ave|blvd|rd|way|dr|hwy|road|ln|ct|cir|circle|blvd)\b/i.test(cleaned)
+      ) {
+        street = cleaned;
+        continue;
+      }
+      if (!facility && /[A-Za-z]/.test(cleaned) && cleaned.length < 80 && !/appointment/i.test(cleaned)) {
+        facility = cleaned;
+      }
+    }
+
+    if (!cityLine) continue;
+    const parts = [facility, street, cityLine].filter(Boolean);
+    const seq = kind === 'pickup'
+      ? stops.filter((s) => s.type === 'pickup').length
+      : stops.filter((s) => s.type === 'dropoff').length;
+    stops.push({ type: kind, address: sanitizeAddress(parts.join(', ')), sequence: seq });
+  }
+
+  return stops;
+}
+
+/**
+ * BM2 style: Shipper Pickup (Stop N) / Consignee Delivery (Stop N) with City, ST US ZIP.
+ */
+function parseBm2Stops(text: string): RateConStop[] {
+  if (!/Shipper Pickup\s*\(Stop/i.test(text) && !/Consignee Delivery\s*\(Stop/i.test(text)) {
+    return [];
+  }
+
+  const stops: RateConStop[] = [];
+  const blocks = [
+    ...text.matchAll(
+      /(Shipper Pickup|Consignee Delivery)\s*\(Stop\s*\d+\)\s*\n([\s\S]*?)(?=\n(?:Shipper Pickup|Consignee Delivery)\s*\(Stop|\nShipment Information|\nCarrier Fees|$)/gi
+    ),
+  ];
+
+  for (const block of blocks) {
+    const kind = /pickup/i.test(block[1]) ? 'pickup' : 'dropoff';
+    const body = block[2];
+    const lines = body
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .filter(
+        (l) =>
+          !/^(expected date|shipping\/receiving|appointment|pickup instructions|delivery instructions|shipper references|consignee references|pickup\/delivery number)/i.test(
+            l
+          )
+      );
+
+    let facility: string | undefined;
+    let street: string | undefined;
+    let cityLine: string | undefined;
+
+    for (const line of lines.slice(0, 8)) {
+      const cityMatch = line.match(
+        /^([A-Za-z .'-]+?)\s*,\s*([A-Z]{2})(?:\s+US)?\s+(\d{5}(?:-\d{4})?)\b/i
+      );
+      if (cityMatch && US_STATE_CODES.has(cityMatch[2].toUpperCase())) {
+        cityLine = `${cityMatch[1].trim()}, ${cityMatch[2].toUpperCase()} ${cityMatch[3]}`;
+        continue;
+      }
+      if (
+        /\d/.test(line)
+        && /(st|street|ave|blvd|rd|way|dr|hwy|road|ln|ct|boulevard|ave)\b/i.test(line)
+        && !cityLine
+      ) {
+        street = line;
+        continue;
+      }
+      if (!facility && !street && !cityLine && /[A-Za-z]/.test(line) && line.length < 90) {
+        facility = line;
+      }
+    }
+
+    if (!cityLine) continue;
+    const parts = [facility, street, cityLine].filter(Boolean);
+    const seq = kind === 'pickup'
+      ? stops.filter((s) => s.type === 'pickup').length
+      : stops.filter((s) => s.type === 'dropoff').length;
+    stops.push({ type: kind, address: sanitizeAddress(parts.join(', ')), sequence: seq });
+  }
+
+  return stops;
+}
+
 function parseLaneFallbackStops(text: string): RateConStop[] {
   let pickups: string[] = [];
   let drops: string[] = [];
@@ -367,6 +508,16 @@ function parseStops(text: string): RateConStop[] {
     return allys;
   }
 
+  const atn = parseAtnStops(text);
+  if (atn.some((s) => s.type === 'pickup') && atn.some((s) => s.type === 'dropoff')) {
+    return atn;
+  }
+
+  const bm2 = parseBm2Stops(text);
+  if (bm2.some((s) => s.type === 'pickup') && bm2.some((s) => s.type === 'dropoff')) {
+    return bm2;
+  }
+
   return parseLaneFallbackStops(text);
 }
 
@@ -376,6 +527,7 @@ function parseMiles(text: string): number | undefined {
     /Total\s+Miles?:?\s*([\d,]+(?:\.\d+)?)/i,
     /Loaded\s+Miles?:?\s*([\d,]+(?:\.\d+)?)/i,
     /Trip\s+Miles?:?\s*([\d,]+(?:\.\d+)?)/i,
+    /Distance\s*\(\s*Miles\s*\):?\s*([\d,]+(?:\.\d+)?)/i,
     /Distance:?\s*([\d,]+(?:\.\d+)?)\s*(?:mi|miles)?/i,
     /Mileage:?\s*([\d,]+(?:\.\d+)?)/i,
     /Bill\s+Miles?:?\s*([\d,]+(?:\.\d+)?)/i,
@@ -385,6 +537,16 @@ function parseMiles(text: string): number | undefined {
     const val = m ? parseMoney(m[1]) : undefined;
     if (val != null && val >= 100 && val <= 4000) return Math.round(val);
   }
+
+  // ATN header: Miles: then size/desc line ending with miles value
+  const atnMiles = text.match(
+    /Miles:\s*\n(?:Pieces:\s*Weight:\s*\n)?[^\n]*?\s(\d{3,4})\s*(?:\n|$)/i
+  );
+  if (atnMiles) {
+    const val = parseMoney(atnMiles[1]);
+    if (val != null && val >= 100 && val <= 4000) return Math.round(val);
+  }
+
   for (const m of text.matchAll(/\b([\d,]{3,4})\s*miles?\b/gi)) {
     const before = text.slice(Math.max(0, m.index! - 40), m.index!).toLowerCase();
     if (/(minimum|weight|limit|radius|within|per mile|return)/.test(before)) continue;
@@ -420,6 +582,12 @@ function parseWeight(text: string): string | undefined {
     if (formatted) return formatted;
   }
 
+  // Bare "Weight: N" (ATN) — skip tiny false hits like "Weight:\n53' VAN"
+  for (const m of text.matchAll(/Weight:?\s*([\d,]{4,6}(?:\.\d+)?)\b/gi)) {
+    const formatted = formatWeightLbs(m[1]);
+    if (formatted) return formatted;
+  }
+
   // Fallback: first standalone "N lbs" in a freight-ish range (not hours/detention)
   for (const m of text.matchAll(/\b([\d,]{4,6}(?:\.\d+)?)\s*lbs?\b/gi)) {
     const before = text.slice(Math.max(0, m.index! - 30), m.index!).toLowerCase();
@@ -431,13 +599,20 @@ function parseWeight(text: string): string | undefined {
 }
 
 function parseDates(text: string): { pickupDate?: string; deliveryDate?: string } {
+  const appointments = [...text.matchAll(/Appointment\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi)].map(
+    (m) => m[1]
+  );
+  const expectedDates = [...text.matchAll(/Expected Date:\s*([\d/]+)/gi)].map((m) => m[1]);
+
   const pickup =
     text.match(/Pickup Date\s*&\s*Time:\s*([\d/]+)/i)?.[1]
     || text.match(/Ship Date:\s*([\d/]+)/i)?.[1]
     || text.match(/PU Date:\s*([\d/]+)/i)?.[1]
     || text.match(/Earliest\s*-\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1]
     || text.match(/REQ\.?\s*TIME:\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})/i)?.[1]
-    || text.match(/Stop\s+1\s+Pick\s*\n([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})/i)?.[1];
+    || text.match(/Stop\s+1\s+Pick\s*\n([A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})/i)?.[1]
+    || appointments[0]
+    || expectedDates[0];
 
   const deliveryMatches = [...text.matchAll(/Earliest\s*-\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/gi)].map((m) => m[1]);
   const delivery =
@@ -445,7 +620,9 @@ function parseDates(text: string): { pickupDate?: string; deliveryDate?: string 
     || text.match(/Delivery Date:\s*([\d/]+)/i)?.[1]
     || deliveryMatches[1]
     || text.match(/REQ\.?\s*TIME:\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})[\s\S]{0,80}?DELIVERY/i)?.[1]
-    || [...text.matchAll(/REQ\.?\s*TIME:\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})/gi)].map((m) => m[1])[1];
+    || [...text.matchAll(/REQ\.?\s*TIME:\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})/gi)].map((m) => m[1])[1]
+    || appointments[1]
+    || expectedDates[1];
 
   return {
     pickupDate: toIsoDate(pickup),
@@ -458,12 +635,57 @@ function saneAmount(val: number | undefined): number | undefined {
   return val;
 }
 
+function findAmountAfterLabel(
+  text: string,
+  label: string,
+  options: { min?: number; max?: number } = {}
+): number | undefined {
+  const min = options.min ?? 50;
+  const max = options.max ?? 50000;
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const candidates = [
+    text.match(new RegExp(`${escaped}\\s*[^\\d\\n]{0,20}\\n\\s*([\\d,]+(?:\\.\\d{2})?)`, 'i')),
+    text.match(new RegExp(`${escaped}\\s[^\\d\\n]{0,30}([\\d,]+(?:\\.\\d{2})?)`, 'i')),
+  ];
+  for (const m of candidates) {
+    const val = m ? parseMoney(m[1]) : undefined;
+    if (val != null && val >= min && val <= max) return val;
+  }
+  return undefined;
+}
+
+function parseAtnAmounts(text: string): {
+  lineHaul?: number;
+  accessorials?: number;
+  accessorialDetail: string;
+  payout?: number;
+} | null {
+  if (!/LINE HAUL RATE/i.test(text) || !/TOTAL RATE/i.test(text)) return null;
+
+  const lineHaul = findAmountAfterLabel(text, 'LINE HAUL RATE');
+  const detention = findAmountAfterLabel(text, 'DETENTION LOADING', { min: 1, max: 5000 });
+  let payout = findAmountAfterLabel(text, 'TOTAL RATE');
+  if (payout == null && lineHaul != null) {
+    payout = saneAmount(Math.round((lineHaul + (detention || 0)) * 100) / 100);
+  }
+
+  return {
+    lineHaul,
+    accessorials: detention,
+    accessorialDetail: detention ? `Detention loading $${detention.toFixed(2)}` : '',
+    payout,
+  };
+}
+
 function parseAmounts(text: string): {
   lineHaul?: number;
   accessorials?: number;
   accessorialDetail: string;
   payout?: number;
 } {
+  const atn = parseAtnAmounts(text);
+  if (atn?.payout != null) return atn;
+
   let lineHaul: number | undefined;
   let accessorials: number | undefined;
   let accessorialDetail = '';
@@ -477,6 +699,10 @@ function parseAmounts(text: string): {
     /Total Carrier Pay:?\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
     /TOTAL AGREED CHARGES\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
     /TOTAL RATE:\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
+    /TOTAL RATE\s[^\d\n]{0,30}([\d,]+(?:\.\d{2})?)/i,
+    /Total Cost\s*USD\s+([\d,]+(?:\.\d{2})?)/i,
+    /Total Cost\s*\n?\s*USD\s+([\d,]+(?:\.\d{2})?)/i,
+    /Net Freight Charges\s*USD\s+([\d,]+(?:\.\d{2})?)/i,
     /^\s*TOTAL\s*\n\s*\$?([\d,]+(?:\.\d{2})?)/im,
     /Total:\s*\$([\d,]+(?:\.\d{2})?)/i,
     /Freight Terms:\s*\$?\s*([\d,]+(?:\.\d{2})?)\s*USD/i,
@@ -492,8 +718,10 @@ function parseAmounts(text: string): {
     /Partner Freight\s+\d+\s+([\d,]+(?:\.\d{2})?)\s*USD/i,
     /Line Haul\s+([\d,]+(?:\.\d{2})?)\s+Flat Rate/i,
     /Line Haul\s*\n\s*([\d,]+(?:\.\d{2})?)/i,
+    /LINE HAUL RATE\s[^\d\n]{0,20}([\d,]+(?:\.\d{2})?)/i,
     /Line Haul\s+([\d,]+(?:\.\d{2})?)/i,
     /Freight charge\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
+    /Net Freight Charges\s*USD\s+([\d,]+(?:\.\d{2})?)/i,
     /BASE RATE:\s*\$?\s*([\d,]+(?:\.\d{2})?)/i,
     /Base\s*\nAmount\s*\n1\s*\n\$([\d,]+(?:\.\d{2})?)/i,
   ];

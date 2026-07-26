@@ -50,6 +50,46 @@ describe('parseRateConfirmation', () => {
     expect(result.draft?.stops.some((s) => s.type === 'dropoff')).toBe(true);
   });
 
+  it('parses ATN rate confirmation with PICK/STOP blocks', () => {
+    const text = readFixture('108648.txt');
+    const result = parseRateConfirmation(text, '108648.pdf');
+    expect(result.documentType).toBe('rate_confirmation');
+    expect(result.draft?.loadRef).toBe('108648');
+    expect(result.draft?.broker).toBe('ATN');
+    expect(result.draft?.payout).toBe('3735');
+    expect(result.draft?.lineHaul).toBe('3700');
+    expect(result.draft?.accessorials).toBe('35');
+    expect(result.draft?.miles).toBe('2107');
+    expect(result.draft?.weight).toBe('41600 lbs');
+    expect(result.draft?.pickupDate).toBe('2026-02-02');
+    expect(result.draft?.deliveryDate).toBe('2026-02-06');
+    expect(result.draft?.stops.some((s) => s.type === 'pickup' && /Taylors,\s*SC/i.test(s.address))).toBe(true);
+    expect(
+      result.draft?.stops.some((s) => s.type === 'dropoff' && /North Las Vegas,\s*NV/i.test(s.address))
+    ).toBe(true);
+    expect(result.draft?.warnings || []).toEqual([]);
+  });
+
+  it('parses BM2 Freight rate confirmation with Shipper/Consignee stops', () => {
+    const text = readFixture('605201_BM2.txt');
+    const result = parseRateConfirmation(
+      text,
+      '605201_MC123734_SPRINTERSTATE_LLC_Carrier_Rate_and_Load_Confirmation.pdf'
+    );
+    expect(result.documentType).toBe('rate_confirmation');
+    expect(result.draft?.loadRef).toBe('605201');
+    expect(result.draft?.broker).toBe('BM2 Freight');
+    expect(result.draft?.payout).toBe('4300');
+    expect(result.draft?.miles).toBe('2531');
+    expect(result.draft?.weight).toBe('10000 lbs');
+    expect(result.draft?.pickupDate).toBe('2026-02-21');
+    expect(result.draft?.deliveryDate).toBe('2026-02-25');
+    expect(result.draft?.stops.some((s) => s.type === 'pickup' && /Charlotte,\s*NC/i.test(s.address))).toBe(true);
+    expect(result.draft?.stops.some((s) => s.type === 'dropoff' && /Fresno,\s*CA/i.test(s.address))).toBe(true);
+    expect(result.draft?.stops.some((s) => /Covington/i.test(s.address))).toBe(false);
+    expect(result.draft?.warnings || []).toEqual([]);
+  });
+
   it('rejects clear POD content', () => {
     const result = parseRateConfirmation(
       'PROOF OF DELIVERY\nReceived By: John\nConsignee Signature: X',
