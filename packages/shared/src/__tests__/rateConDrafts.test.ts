@@ -53,5 +53,6 @@ describe('rateConDrafts', () => {
   it('recognizes excluded POD filenames', () => {
     expect(isLikelyPodFile('CamScanner 1-24-26.pdf')).toBe(true);
     expect(isLikelyPodFile('Carrier_Rate_Confirmation_123.pdf')).toBe(false);
+    expect(isLikelyPodFile('1_5066584670674618081.pdf')).toBe(false);
   });
 });

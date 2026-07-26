@@ -73,7 +73,6 @@ export function rateConDraftToCreateLoadInput(
 }
 
 export function isLikelyPodFile(fileName: string): boolean {
-  return /^(CamScanner |Picture|Class 9|TruckParking|Dispatch Fax|1_5066584670674618081)/i.test(
-    fileName.trim()
-  );
+  // Filename-only guard for common POD/photo dumps. Content classification happens after extract.
+  return /^(CamScanner |Picture|Class 9|TruckParking|Dispatch Fax)/i.test(fileName.trim());
 }
