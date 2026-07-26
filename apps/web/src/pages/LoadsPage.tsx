@@ -4,7 +4,7 @@ import { LayoutGrid, List, Plus, Search, UploadCloud } from 'lucide-react';
 import { getLoadCityStates, subscribeCompanyLoads, getCompanyDrivers } from '@silver-crown/shared';
 import type { Load, AppUser } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
-import LoadCard, { statusLabel, statusPillClass, deadheadOrDelivery } from '../components/LoadCard';
+import LoadCard, { statusLabel, statusPillClass } from '../components/LoadCard';
 
 type ViewMode = 'grid' | 'list';
 
@@ -156,17 +156,17 @@ export default function LoadsPage() {
                 <tr className="border-b border-outline-variant text-on-surface-variant text-xs uppercase tracking-wider">
                   <th className="text-left p-4">Pickup</th>
                   <th className="text-left p-4">Drop-off</th>
+                  <th className="text-left p-4">Broker</th>
+                  <th className="text-left p-4">Load #</th>
                   <th className="text-left p-4">Status</th>
                   <th className="text-left p-4">Gross Pay</th>
                   <th className="text-left p-4">Miles</th>
-                  <th className="text-left p-4">Deadhead / Delivery</th>
                   <th className="text-left p-4">Type</th>
                   <th className="text-left p-4">Driver</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((load) => {
-                  const { value: rightValue } = deadheadOrDelivery(load);
                   const cities = getLoadCityStates(load);
                   const pickupHint = extraStopsHint(cities.extraPickups);
                   const dropoffHint = extraStopsHint(cities.extraDropoffs);
@@ -214,6 +214,16 @@ export default function LoadsPage() {
                           <p className="text-[10px] text-on-surface-variant mt-0.5">{dropoffHint}</p>
                         )}
                       </td>
+                      <td className="p-4 text-on-surface-variant max-w-[9rem]">
+                        <p className="truncate" title={load.broker || undefined}>
+                          {load.broker || '—'}
+                        </p>
+                      </td>
+                      <td className="p-4 text-on-surface-variant max-w-[8rem]">
+                        <p className="truncate" title={load.loadRef || undefined}>
+                          {load.loadRef || '—'}
+                        </p>
+                      </td>
                       <td className="p-4">
                         <span
                           className={`inline-block px-2 py-1 rounded-full text-[10px] font-bold uppercase ${statusPillClass(load.status)}`}
@@ -223,7 +233,6 @@ export default function LoadsPage() {
                       </td>
                       <td className="p-4 text-primary font-bold">${load.payout}</td>
                       <td className="p-4 text-on-surface-variant">{load.miles} mi</td>
-                      <td className="p-4 text-on-surface-variant">{rightValue}</td>
                       <td className="p-4 text-on-surface-variant">{load.type}</td>
                       <td className="p-4 text-on-surface-variant">
                         {load.assignedDriverName || 'Unassigned'}
