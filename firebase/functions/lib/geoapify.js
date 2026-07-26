@@ -40,7 +40,7 @@ const https_1 = require("firebase-functions/v2/https");
 const geoapifyApiKey = (0, params_1.defineSecret)('GEOAPIFY_API_KEY');
 const METERS_PER_MILE = 1609.344;
 exports.calculateRouteMiles = (0, https_1.onCall)({ secrets: [geoapifyApiKey], timeoutSeconds: 60 }, async (request) => {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g;
     if (!request.auth) {
         throw new https_1.HttpsError('unauthenticated', 'Must be signed in to calculate route miles.');
     }
@@ -48,7 +48,7 @@ exports.calculateRouteMiles = (0, https_1.onCall)({ secrets: [geoapifyApiKey], t
     if (!userSnap.exists || ((_a = userSnap.data()) === null || _a === void 0 ? void 0 : _a.role) !== 'admin') {
         throw new https_1.HttpsError('permission-denied', 'Admin access is required.');
     }
-    const { stops, mode = 'truck' } = request.data;
+    const { stops, mode = 'heavy_truck' } = request.data;
     if (!Array.isArray(stops) || stops.length < 2 || stops.length > 25) {
         throw new https_1.HttpsError('invalid-argument', 'Provide between 2 and 25 ordered stops.');
     }
@@ -69,25 +69,39 @@ exports.calculateRouteMiles = (0, https_1.onCall)({ secrets: [geoapifyApiKey], t
     const waypointValue = geocoded
         .map((stop) => `${stop.coords.latitude},${stop.coords.longitude}`)
         .join('|');
-    const routeUrl = new URL('https://api.geoapify.com/v1/routing');
-    routeUrl.search = new URLSearchParams({
-        waypoints: waypointValue,
-        mode,
-        units: 'imperial',
-        type: 'balanced',
-        format: 'geojson',
-        apiKey: key,
-    }).toString();
-    const routeResponse = await fetch(routeUrl);
-    if (!routeResponse.ok) {
-        throw new https_1.HttpsError('unavailable', `Geoapify routing failed (${routeResponse.status}).`);
+    const modesToTry = mode === 'heavy_truck' ? ['heavy_truck', 'truck'] : [mode];
+    let lastStatus = 0;
+    let routeJson = null;
+    let usedMode = mode;
+    for (const tryMode of modesToTry) {
+        const routeUrl = new URL('https://api.geoapify.com/v1/routing');
+        routeUrl.search = new URLSearchParams({
+            waypoints: waypointValue,
+            mode: tryMode,
+            units: 'imperial',
+            type: 'balanced',
+            format: 'geojson',
+            apiKey: key,
+        }).toString();
+        const routeResponse = await fetch(routeUrl);
+        lastStatus = routeResponse.status;
+        if (!routeResponse.ok)
+            continue;
+        const json = await routeResponse.json();
+        if (((_d = (_c = json.features) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.properties) && Number.isFinite(json.features[0].properties.distance)) {
+            routeJson = json;
+            usedMode = tryMode;
+            break;
+        }
     }
-    const routeJson = await routeResponse.json();
-    const properties = (_d = (_c = routeJson.features) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.properties;
+    if (!routeJson) {
+        throw new https_1.HttpsError('unavailable', `Geoapify routing failed (${lastStatus || 'no route'}).`);
+    }
+    const properties = (_f = (_e = routeJson.features) === null || _e === void 0 ? void 0 : _e[0]) === null || _f === void 0 ? void 0 : _f.properties;
     if (!properties || !Number.isFinite(properties.distance)) {
         throw new https_1.HttpsError('not-found', 'No truck route was found for these stops.');
     }
-    const units = ((_e = properties.distance_units) === null || _e === void 0 ? void 0 : _e.toLowerCase()) || '';
+    const units = ((_g = properties.distance_units) === null || _g === void 0 ? void 0 : _g.toLowerCase()) || '';
     const miles = units.includes('mile')
         ? properties.distance
         : properties.distance / METERS_PER_MILE;
@@ -95,6 +109,7 @@ exports.calculateRouteMiles = (0, https_1.onCall)({ secrets: [geoapifyApiKey], t
         miles: Math.round(miles),
         milesExact: Number(miles.toFixed(1)),
         distanceUnits: 'miles',
+        mode: usedMode,
         stops: geocoded,
     };
 });

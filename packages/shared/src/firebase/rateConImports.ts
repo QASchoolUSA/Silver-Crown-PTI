@@ -9,6 +9,7 @@ export interface RouteMilesResult {
   miles: number;
   milesExact: number;
   distanceUnits: 'miles';
+  mode?: string;
   stops: Array<RateConStop & { coords: { latitude: number; longitude: number } }>;
 }
 
@@ -16,10 +17,10 @@ export async function calculateRateConRouteMiles(
   stops: RateConStop[]
 ): Promise<RouteMilesResult> {
   const callable = httpsCallable<
-    { stops: RateConStop[]; mode: 'truck' },
+    { stops: RateConStop[]; mode: 'heavy_truck' },
     RouteMilesResult
   >(getFirebaseFunctions(), 'calculateRouteMiles');
-  const result = await callable({ stops, mode: 'truck' });
+  const result = await callable({ stops, mode: 'heavy_truck' });
   return result.data;
 }
 

@@ -34,9 +34,9 @@ export const calculateRouteMiles = onCall(
       throw new HttpsError('permission-denied', 'Admin access is required.');
     }
 
-    const { stops, mode = 'truck' } = request.data as {
+    const { stops, mode = 'heavy_truck' } = request.data as {
       stops?: RouteStopInput[];
-      mode?: 'light_truck' | 'medium_truck' | 'truck' | 'heavy_truck';
+      mode?: 'light_truck' | 'medium_truck' | 'truck' | 'heavy_truck' | 'long_truck';
     };
 
     if (!Array.isArray(stops) || stops.length < 2 || stops.length > 25) {
@@ -63,22 +63,39 @@ export const calculateRouteMiles = onCall(
     const waypointValue = geocoded
       .map((stop) => `${stop.coords.latitude},${stop.coords.longitude}`)
       .join('|');
-    const routeUrl = new URL('https://api.geoapify.com/v1/routing');
-    routeUrl.search = new URLSearchParams({
-      waypoints: waypointValue,
-      mode,
-      units: 'imperial',
-      type: 'balanced',
-      format: 'geojson',
-      apiKey: key,
-    }).toString();
 
-    const routeResponse = await fetch(routeUrl);
-    if (!routeResponse.ok) {
-      throw new HttpsError('unavailable', `Geoapify routing failed (${routeResponse.status}).`);
+    const modesToTry = mode === 'heavy_truck' ? (['heavy_truck', 'truck'] as const) : ([mode] as const);
+    let lastStatus = 0;
+    let routeJson: { features?: GeoapifyFeature[] } | null = null;
+    let usedMode: string = mode;
+
+    for (const tryMode of modesToTry) {
+      const routeUrl = new URL('https://api.geoapify.com/v1/routing');
+      routeUrl.search = new URLSearchParams({
+        waypoints: waypointValue,
+        mode: tryMode,
+        units: 'imperial',
+        type: 'balanced',
+        format: 'geojson',
+        apiKey: key,
+      }).toString();
+
+      const routeResponse = await fetch(routeUrl);
+      lastStatus = routeResponse.status;
+      if (!routeResponse.ok) continue;
+
+      const json = await routeResponse.json() as { features?: GeoapifyFeature[] };
+      if (json.features?.[0]?.properties && Number.isFinite(json.features[0].properties.distance)) {
+        routeJson = json;
+        usedMode = tryMode;
+        break;
+      }
     }
 
-    const routeJson = await routeResponse.json() as { features?: GeoapifyFeature[] };
+    if (!routeJson) {
+      throw new HttpsError('unavailable', `Geoapify routing failed (${lastStatus || 'no route'}).`);
+    }
+
     const properties = routeJson.features?.[0]?.properties;
     if (!properties || !Number.isFinite(properties.distance)) {
       throw new HttpsError('not-found', 'No truck route was found for these stops.');
@@ -93,6 +110,7 @@ export const calculateRouteMiles = onCall(
       miles: Math.round(miles),
       milesExact: Number(miles.toFixed(1)),
       distanceUnits: 'miles',
+      mode: usedMode,
       stops: geocoded,
     };
   }

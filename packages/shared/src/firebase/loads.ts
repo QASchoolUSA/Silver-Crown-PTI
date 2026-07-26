@@ -43,6 +43,7 @@ function mapLoad(id: string, data: Record<string, unknown>): Load {
     accessorialDetail: data.accessorialDetail as string | undefined,
     importNotes: data.importNotes as string | undefined,
     sourceFile: data.sourceFile as string | undefined,
+    weight: data.weight as string | undefined,
   };
 }
 
@@ -149,6 +150,7 @@ export interface CreateLoadInput {
   accessorialDetail?: string;
   importNotes?: string;
   sourceFile?: string;
+  weight?: string;
 }
 
 export async function createLoad(input: CreateLoadInput): Promise<string> {
@@ -178,6 +180,7 @@ export async function createLoad(input: CreateLoadInput): Promise<string> {
     accessorialDetail: input.accessorialDetail,
     importNotes: input.importNotes,
     sourceFile: input.sourceFile,
+    weight: input.weight,
   }).filter(([, value]) => value !== undefined));
   const ref = await addDoc(collection(getFirebaseDb(), 'loads'), payload);
   return ref.id;

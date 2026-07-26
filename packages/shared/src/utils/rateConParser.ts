@@ -394,6 +394,42 @@ function parseMiles(text: string): number | undefined {
   return undefined;
 }
 
+function formatWeightLbs(raw: string): string | undefined {
+  const val = parseMoney(raw);
+  if (val == null || val < 500 || val > 90000) return undefined;
+  return `${Math.round(val)} lbs`;
+}
+
+/**
+ * Shipment weight from rate cons when explicitly printed.
+ */
+function parseWeight(text: string): string | undefined {
+  const labeled = [
+    /Total\s+Weight:?\s*([\d,]+(?:\.\d+)?)\s*(?:lb|lbs|pounds)?/i,
+    /TOTAL\s+PICKUP\s*\n\s*([\d,]+(?:\.\d+)?)\s*lbs/i,
+    /TOTAL\s+DELIVERY\s*\n\s*([\d,]+(?:\.\d+)?)\s*lbs/i,
+    /Shipment\s*\n\s*([\d,]+(?:\.\d+)?)\s*lbs(?:\s*\([^)]*\))?/i,
+    /Gross\s+Weight:?\s*([\d,]+(?:\.\d+)?)\s*(?:lb|lbs)?/i,
+    /Weight:?\s*([\d,]+(?:\.\d+)?)\s*(?:lb|lbs|pounds)\b/i,
+    /\b([\d,]+(?:\.\d+)?)\s*lbs?\s*\(\s*[\d.]+\s*tons?\s*\)/i,
+  ];
+  for (const pat of labeled) {
+    const m = text.match(pat);
+    if (!m?.[1]) continue;
+    const formatted = formatWeightLbs(m[1]);
+    if (formatted) return formatted;
+  }
+
+  // Fallback: first standalone "N lbs" in a freight-ish range (not hours/detention)
+  for (const m of text.matchAll(/\b([\d,]{4,6}(?:\.\d+)?)\s*lbs?\b/gi)) {
+    const before = text.slice(Math.max(0, m.index! - 30), m.index!).toLowerCase();
+    if (/(per|min|hour|detention|rate|\$)/.test(before)) continue;
+    const formatted = formatWeightLbs(m[1]);
+    if (formatted) return formatted;
+  }
+  return undefined;
+}
+
 function parseDates(text: string): { pickupDate?: string; deliveryDate?: string } {
   const pickup =
     text.match(/Pickup Date\s*&\s*Time:\s*([\d/]+)/i)?.[1]
@@ -562,6 +598,7 @@ export function parseRateConfirmation(
   const dates = parseDates(text);
   const stops = parseStops(text);
   const miles = parseMiles(text);
+  const weight = parseWeight(text);
   const broker = parseBroker(text);
   const loadRef = parseLoadId(text, fileName);
 
@@ -583,6 +620,7 @@ export function parseRateConfirmation(
     type: parseEquipment(text),
     pickupDate: dates.pickupDate,
     deliveryDate: dates.deliveryDate,
+    weight,
     stops,
     confidence: warnings.length ? 0.7 : 0.9,
     warnings,

@@ -162,6 +162,7 @@ export async function extractRateConLocal(
     pickupDate: draft.pickupDate,
     deliveryDate: draft.deliveryDate,
     totalRate: draft.payout ? `$${draft.payout}` : undefined,
+    weight: draft.weight,
     rawText: parsed.rawText,
     confidence: parsed.confidence,
     rateConDraft: draft,

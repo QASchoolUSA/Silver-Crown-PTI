@@ -71,6 +71,7 @@ export interface Load {
   accessorialDetail?: string;
   importNotes?: string;
   sourceFile?: string;
+  weight?: string;
 }
 
 export type RateConMilesSource = 'rate_con' | 'geoapify' | 'manual';
@@ -97,6 +98,7 @@ export interface RateConDraft {
   pickupDate?: string;
   deliveryDate?: string;
   dispatchDate?: string;
+  weight?: string;
   stops: RateConStop[];
   confidence?: number;
   warnings?: string[];

@@ -18,6 +18,7 @@ describe('parseRateConfirmation', () => {
     expect(result.draft?.broker).toBe('Corporate Traffic');
     expect(result.draft?.payout).toBe('1100');
     expect(result.draft?.type).toBe('Dry Van');
+    expect(result.draft?.weight).toBe('8750 lbs');
     expect(result.draft?.stops.some((s) => s.type === 'pickup' && /MESQUITE.*NV/i.test(s.address))).toBe(true);
     expect(result.draft?.stops.some((s) => s.type === 'dropoff' && /RIALTO.*CA/i.test(s.address))).toBe(true);
   });
@@ -31,6 +32,7 @@ describe('parseRateConfirmation', () => {
     expect(result.draft?.payout).toBe('7100');
     expect(result.draft?.lineHaul).toBe('7050');
     expect(result.draft?.accessorials).toBe('50');
+    expect(result.draft?.weight).toBe('35000 lbs');
     const dropoffs = result.draft?.stops.filter((s) => s.type === 'dropoff') || [];
     expect(dropoffs.length).toBeGreaterThanOrEqual(2);
     expect(result.draft?.stops.some((s) => s.type === 'pickup' && /Commerce,\s*CA/i.test(s.address))).toBe(true);

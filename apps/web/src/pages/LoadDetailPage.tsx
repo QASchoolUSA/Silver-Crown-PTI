@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { ArrowLeft, MapPin, Truck, User, Calendar, DollarSign, Route } from 'lucide-react';
+import { ArrowLeft, MapPin, Truck, User, Calendar, DollarSign, Route, Weight } from 'lucide-react';
 import {
   getLoadById,
   getCompanyDrivers,
@@ -177,6 +177,7 @@ export default function LoadDetailPage() {
           ...(load.lineHaul ? [{ icon: DollarSign, label: 'Line Haul', value: `$${load.lineHaul}` }] : []),
           ...(load.accessorials ? [{ icon: DollarSign, label: 'Accessorials', value: `$${load.accessorials}` }] : []),
           { icon: Route, label: 'Total Miles', value: `${load.miles} mi` },
+          ...(load.weight ? [{ icon: Weight, label: 'Weight', value: load.weight }] : []),
           { icon: MapPin, label: 'Deadhead', value: `${load.deadhead || '0'} mi` },
           { icon: Truck, label: 'Equipment', value: load.type },
           { icon: User, label: 'Driver', value: load.assignedDriverName || 'Unassigned' },

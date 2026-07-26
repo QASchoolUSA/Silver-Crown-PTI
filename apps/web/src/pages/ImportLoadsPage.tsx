@@ -140,7 +140,7 @@ export default function ImportLoadsPage() {
             miles: String(route.miles),
             milesSource: 'geoapify',
             stops: route.stops,
-            warnings: [...(draft.warnings || []), 'Miles calculated with Geoapify truck routing.'],
+            warnings: [...(draft.warnings || []), 'Miles calculated with Geoapify heavy_truck (loaded semi) routing.'],
           };
         } catch (error) {
           draft = {
@@ -403,7 +403,7 @@ function ImportRow({
           <div className="hidden md:flex items-center gap-6 text-sm">
             <span className="font-semibold">{draft.payout ? `$${draft.payout.replace('$', '')}` : 'Rate needed'}</span>
             <span className="text-on-surface-variant">
-              {draft.miles || '—'} mi · {draft.milesSource || 'missing'}
+              {draft.miles || '—'} mi · {draft.milesSource === 'geoapify' ? 'semi (heavy truck)' : (draft.milesSource || 'missing')}
             </span>
           </div>
         )}
@@ -433,6 +433,7 @@ function ImportRow({
             <Field label="Load ID / Load #" value={draft.loadRef || ''} onChange={(loadRef) => updateDraft(item.id, { loadRef })} />
             <Field label="Gross / Flat rate" type="number" value={draft.payout?.replace(/[$,]/g, '') || ''} onChange={(payout) => updateDraft(item.id, { payout })} />
             <Field label="Miles" type="number" value={draft.miles || ''} onChange={(miles) => updateDraft(item.id, { miles, milesSource: 'manual' })} />
+            <Field label="Weight (lbs)" value={draft.weight?.replace(/\s*lbs?/i, '') || ''} onChange={(raw) => updateDraft(item.id, { weight: raw.trim() ? `${raw.trim().replace(/,/g, '')} lbs` : undefined })} />
             <Field label="Line haul" type="number" value={draft.lineHaul?.replace(/[$,]/g, '') || ''} onChange={(lineHaul) => updateDraft(item.id, { lineHaul })} />
             <Field label="Accessorials" type="number" value={draft.accessorials?.replace(/[$,]/g, '') || ''} onChange={(accessorials) => updateDraft(item.id, { accessorials })} />
             <Field label="Accessorial detail" value={draft.accessorialDetail || ''} onChange={(accessorialDetail) => updateDraft(item.id, { accessorialDetail })} />
@@ -463,7 +464,7 @@ function ImportRow({
               onClick={() => recalculateMiles(item)}
               className="flex items-center gap-2 text-primary text-xs font-bold uppercase tracking-wider"
             >
-              <Route size={15} /> Recalculate truck miles
+              <Route size={15} /> Recalculate semi truck miles
             </button>
           </div>
           <StopAddressEditor

@@ -64,6 +64,7 @@ export function rateConDraftToCreateLoadInput(
     lineHaul: draft.lineHaul?.replace(/[$,]/g, ''),
     accessorials: draft.accessorials?.replace(/[$,]/g, ''),
     accessorialDetail: draft.accessorialDetail?.trim(),
+    weight: draft.weight?.trim(),
     importNotes: [
       `Imported from rate confirmation (${draft.milesSource || 'manual'} miles).`,
       ...(draft.warnings || []),
