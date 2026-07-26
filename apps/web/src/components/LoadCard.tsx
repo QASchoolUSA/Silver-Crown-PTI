@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { Load } from '@silver-crown/shared';
+import { getLoadCityStates, type Load } from '@silver-crown/shared';
 import LoadRouteMap from './LoadRouteMap';
 
 export function statusLabel(status: Load['status']) {
@@ -29,6 +29,7 @@ interface LoadCardProps {
 
 export default function LoadCard({ load }: LoadCardProps) {
   const { label: rightLabel, value: rightValue } = deadheadOrDelivery(load);
+  const cities = getLoadCityStates(load);
 
   return (
     <Link
@@ -45,8 +46,11 @@ export default function LoadCard({ load }: LoadCardProps) {
 
       <div className="p-4">
         <div className="flex items-start justify-between gap-3 mb-1">
-          <h2 className="font-[family-name:var(--font-bebas)] text-2xl tracking-wide leading-tight uppercase group-hover:text-primary transition-colors">
-            {load.origin} <span className="text-primary">→</span> {load.destination}
+          <h2
+            className="font-[family-name:var(--font-bebas)] text-2xl tracking-wide leading-tight uppercase group-hover:text-primary transition-colors"
+            title={`${load.origin} → ${load.destination}`}
+          >
+            {cities.pickup} <span className="text-primary">→</span> {cities.dropoff}
           </h2>
           <span
             className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${statusPillClass(load.status)}`}

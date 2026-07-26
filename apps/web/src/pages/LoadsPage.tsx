@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { LayoutGrid, List, Plus, Search, UploadCloud } from 'lucide-react';
-import { subscribeCompanyLoads, getCompanyDrivers } from '@silver-crown/shared';
+import { getLoadCityStates, subscribeCompanyLoads, getCompanyDrivers } from '@silver-crown/shared';
 import type { Load, AppUser } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
 import LoadCard, { statusLabel, statusPillClass, deadheadOrDelivery } from '../components/LoadCard';
@@ -10,8 +10,14 @@ type ViewMode = 'grid' | 'list';
 
 const VIEW_MODE_KEY = 'loads-view-mode';
 
+function extraStopsHint(count: number): string | null {
+  if (count <= 0) return null;
+  return `+${count} ${count === 1 ? 'stop' : 'stops'}`;
+}
+
 export default function LoadsPage() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [loads, setLoads] = useState<Load[]>([]);
   const [drivers, setDrivers] = useState<AppUser[]>([]);
   const [search, setSearch] = useState('');
@@ -44,6 +50,15 @@ export default function LoadsPage() {
     const matchesDriver = driverFilter === 'all' || l.assignedDriverId === driverFilter;
     return matchesSearch && matchesStatus && matchesDriver;
   });
+
+  const openLoad = (loadId: string, newTab = false) => {
+    const path = `/loads/${loadId}`;
+    if (newTab) {
+      window.open(path, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    navigate(path);
+  };
 
   return (
     <div>
@@ -139,7 +154,8 @@ export default function LoadsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-outline-variant text-on-surface-variant text-xs uppercase tracking-wider">
-                  <th className="text-left p-4">Route</th>
+                  <th className="text-left p-4">Pickup</th>
+                  <th className="text-left p-4">Drop-off</th>
                   <th className="text-left p-4">Status</th>
                   <th className="text-left p-4">Gross Pay</th>
                   <th className="text-left p-4">Miles</th>
@@ -151,18 +167,52 @@ export default function LoadsPage() {
               <tbody>
                 {filtered.map((load) => {
                   const { value: rightValue } = deadheadOrDelivery(load);
+                  const cities = getLoadCityStates(load);
+                  const pickupHint = extraStopsHint(cities.extraPickups);
+                  const dropoffHint = extraStopsHint(cities.extraDropoffs);
+
                   return (
                     <tr
                       key={load.id}
-                      className="border-b border-outline-variant last:border-b-0 hover:bg-surface-container-high"
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`Open load ${cities.pickup} to ${cities.dropoff}`}
+                      className="border-b border-outline-variant last:border-b-0 hover:bg-surface-container-high cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]"
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey) {
+                          openLoad(load.id, true);
+                          return;
+                        }
+                        openLoad(load.id);
+                      }}
+                      onAuxClick={(e) => {
+                        if (e.button === 1) {
+                          e.preventDefault();
+                          openLoad(load.id, true);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openLoad(load.id, e.metaKey || e.ctrlKey);
+                        }
+                      }}
                     >
-                      <td className="p-4">
-                        <Link
-                          to={`/loads/${load.id}`}
-                          className="font-semibold hover:text-primary transition-colors"
-                        >
-                          {load.origin} <span className="text-primary">→</span> {load.destination}
-                        </Link>
+                      <td className="p-4 max-w-[10rem]">
+                        <p className="font-semibold truncate" title={load.origin}>
+                          {cities.pickup}
+                        </p>
+                        {pickupHint && (
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">{pickupHint}</p>
+                        )}
+                      </td>
+                      <td className="p-4 max-w-[10rem]">
+                        <p className="font-semibold truncate" title={load.destination}>
+                          {cities.dropoff}
+                        </p>
+                        {dropoffHint && (
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">{dropoffHint}</p>
+                        )}
                       </td>
                       <td className="p-4">
                         <span
