@@ -73,6 +73,35 @@ export interface Load {
   sourceFile?: string;
 }
 
+export type RateConMilesSource = 'rate_con' | 'geoapify' | 'manual';
+
+export interface RateConStop {
+  type: StopType;
+  address: string;
+  coords?: Coords;
+  sequence: number;
+}
+
+export interface RateConDraft {
+  sourceFile: string;
+  documentId?: string;
+  loadRef?: string;
+  broker?: string;
+  payout?: string;
+  lineHaul?: string;
+  accessorials?: string;
+  accessorialDetail?: string;
+  miles?: string;
+  milesSource?: RateConMilesSource;
+  type?: EquipmentType;
+  pickupDate?: string;
+  deliveryDate?: string;
+  dispatchDate?: string;
+  stops: RateConStop[];
+  confidence?: number;
+  warnings?: string[];
+}
+
 export type InspectionStatus = 'PASS' | 'DEFECTS FOUND';
 export type ItemStatus = 'pass' | 'fail' | null;
 
@@ -180,6 +209,7 @@ export interface ExtractedDocData {
   handwrittenNotes?: string;
   rawText?: string;
   confidence?: number;
+  rateConDraft?: RateConDraft;
 }
 
 export interface CompanyDocument {

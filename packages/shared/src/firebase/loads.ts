@@ -153,7 +153,7 @@ export interface CreateLoadInput {
 
 export async function createLoad(input: CreateLoadInput): Promise<string> {
   const legacy = deriveLegacyFieldsFromStops(input.stops);
-  const ref = await addDoc(collection(getFirebaseDb(), 'loads'), {
+  const payload = Object.fromEntries(Object.entries({
     companyId: input.companyId,
     assignedDriverId: input.assignedDriverId || null,
     assignedDriverName: input.assignedDriverName,
@@ -178,7 +178,8 @@ export async function createLoad(input: CreateLoadInput): Promise<string> {
     accessorialDetail: input.accessorialDetail,
     importNotes: input.importNotes,
     sourceFile: input.sourceFile,
-  });
+  }).filter(([, value]) => value !== undefined));
+  const ref = await addDoc(collection(getFirebaseDb(), 'loads'), payload);
   return ref.id;
 }
 

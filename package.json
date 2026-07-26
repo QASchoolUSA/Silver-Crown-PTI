@@ -16,6 +16,7 @@
     "seed:production": "tsx firebase/seed-production.ts",
     "import:alexey": "tsx firebase/import-alexey-kedrov.ts",
     "import:alexey:validate": "tsx firebase/import-alexey-kedrov.ts -- --validate",
+    "import:rate-cons": "tsx firebase/import-rate-cons.ts",
     "lint": "pnpm -r lint"
   },
   "overrides": {

@@ -282,13 +282,32 @@ function toIsoDate(dateStr: string, fallback?: string): string {
   return new Date().toISOString();
 }
 
+function sanitizeLane(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/pickup tbd|delivery tbd/i.test(trimmed)) return '';
+
+  const invalid =
+    /bill of lading|circumstances|broker's option|carrier shall|broken, mi|right at|rejection of cargo|cooper street, po|^\d| st\.? | blvd| rd | ave |street|dorman|distribution/i;
+  if (invalid.test(trimmed)) return '';
+
+  const match = trimmed.match(/^(.+,\s*[A-Z]{2})(?:\s|$)/i);
+  if (!match) {
+    const tail = trimmed.match(/([A-Za-z][A-Za-z .'-]{2,},\s*[A-Z]{2})\s*$/i);
+    if (!tail || invalid.test(tail[1])) return '';
+    return tail[1].trim();
+  }
+  if (invalid.test(match[1])) return '';
+  return match[1].trim();
+}
+
 async function buildStops(
   origin: string,
   destination: string,
   loadRef: string
 ): Promise<{ stops: admin.firestore.DocumentData['stops']; origin: string; destination: string }> {
-  const pickupQuery = origin.trim();
-  const dropQuery = destination.trim();
+  const pickupQuery = sanitizeLane(origin);
+  const dropQuery = sanitizeLane(destination);
 
   let pickupAddress = pickupQuery;
   let dropAddress = dropQuery;
@@ -628,7 +647,10 @@ async function importAlexeyViaClient() {
     let importNotes = row.importNotes;
     let pdfMiles: number | null | undefined = null;
 
-    if (row.sourceFile && (!origin || !destination || !row.miles)) {
+    if (
+      row.sourceFile &&
+      (!sanitizeLane(origin) || !sanitizeLane(destination) || !row.miles)
+    ) {
       const pdf = enrichFromPdf(row.sourceFile);
       if (pdf) {
         origin = origin || pdf.origin || '';
@@ -753,7 +775,10 @@ async function importAlexey() {
     let importNotes = row.importNotes;
     let pdfMiles: number | null | undefined = null;
 
-    if (row.sourceFile && (!origin || !destination || !row.miles)) {
+    if (
+      row.sourceFile &&
+      (!sanitizeLane(origin) || !sanitizeLane(destination) || !row.miles)
+    ) {
       const pdf = enrichFromPdf(row.sourceFile);
       if (pdf) {
         origin = origin || pdf.origin || '';

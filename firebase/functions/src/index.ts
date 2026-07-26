@@ -4,6 +4,7 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { fetchRouteWeatherForFunction, isValidCoords } from './nws';
 import { geocodeSearch } from './geocode';
 export { extractDocumentData } from './extractDocument';
+export { calculateRouteMiles } from './geoapify';
 
 admin.initializeApp();
 const db = admin.firestore();

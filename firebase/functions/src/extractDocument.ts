@@ -1,5 +1,8 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
+
+const geminiApiKey = defineSecret('GEMINI_API_KEY');
 
 export interface ExtractDocumentRequest {
   documentId: string;
@@ -25,9 +28,33 @@ export interface ExtractedDocData {
   handwrittenNotes?: string;
   rawText?: string;
   confidence?: number;
+  rateConDraft?: RateConDraft;
 }
 
-export const extractDocumentData = onCall(async (request) => {
+interface RateConDraft {
+  sourceFile: string;
+  loadRef?: string;
+  broker?: string;
+  payout?: string;
+  lineHaul?: string;
+  accessorials?: string;
+  accessorialDetail?: string;
+  miles?: string;
+  milesSource?: 'rate_con';
+  type?: 'Dry Van' | 'Reefer' | 'Flatbed';
+  pickupDate?: string;
+  deliveryDate?: string;
+  dispatchDate?: string;
+  stops: Array<{
+    type: 'pickup' | 'dropoff';
+    address: string;
+    sequence: number;
+  }>;
+  confidence?: number;
+  warnings?: string[];
+}
+
+export const extractDocumentData = onCall({ secrets: [geminiApiKey] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Must be signed in to extract document data.');
   }
@@ -39,6 +66,20 @@ export const extractDocumentData = onCall(async (request) => {
 
   const db = admin.firestore();
   const docRef = db.collection('documents').doc(documentId);
+  const [userSnap, documentSnap] = await Promise.all([
+    db.collection('users').doc(request.auth.uid).get(),
+    docRef.get(),
+  ]);
+  const userData = userSnap.data();
+  const documentData = documentSnap.data();
+  if (
+    !userSnap.exists
+    || userData?.role !== 'admin'
+    || !documentSnap.exists
+    || documentData?.companyId !== userData.companyId
+  ) {
+    throw new HttpsError('permission-denied', 'Admin access to this document is required.');
+  }
 
   const apiKey = requestApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
 
@@ -54,7 +95,7 @@ export const extractDocumentData = onCall(async (request) => {
 
     // Update Firestore document with extracted data & status
     await docRef.update({
-      extractedData: extracted,
+      extractedData: stripUndefined(extracted),
       docType: extracted.documentType || 'other',
       status: 'processed',
       updatedAt: new Date().toISOString(),
@@ -72,6 +113,18 @@ export const extractDocumentData = onCall(async (request) => {
     throw new HttpsError('internal', `Failed to process document: ${errMessage}`);
   }
 });
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripUndefined) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, nested]) => nested !== undefined)
+        .map(([key, nested]) => [key, stripUndefined(nested)])
+    ) as T;
+  }
+  return value;
+}
 
 async function callGeminiVisionApi(
   apiKey: string,
@@ -96,7 +149,7 @@ async function callGeminiVisionApi(
     throw new Error('No image base64 data available to process with Gemini.');
   }
 
-  const prompt = `You are a world-class AI document extractor specialized EXCLUSIVELY in Freight & Trucking Logistics documents (Bills of Lading, Rate Confirmations, Proof of Delivery, CAT Scale / Weight Tickets, Fuel / Lumper Receipts).
+  const prompt = `You are a freight-document extraction engine used by experienced truck dispatchers. Transcribe the document and return factual data only. Never infer printed miles, money, addresses, or stop order.
 
 Perform a 2-stage analysis of this document image:
 STAGE 1: Transcribe ALL text on the page into "rawText" (including headers, table cells, stamps, seal numbers, and handwritten notes).
@@ -115,7 +168,29 @@ STAGE 2: Extract structured JSON matching this exact schema:
   "totalRate": string or null,
   "weight": string or null,
   "handwrittenNotes": string or null,
-  "rawText": string
+  "rawText": string,
+  "rateConDraft": {
+    "loadRef": string or null,
+    "broker": string or null,
+    "payout": string or null,
+    "lineHaul": string or null,
+    "accessorials": string or null,
+    "accessorialDetail": string or null,
+    "miles": string or null,
+    "type": "Dry Van" | "Reefer" | "Flatbed" | null,
+    "pickupDate": "YYYY-MM-DD" or null,
+    "deliveryDate": "YYYY-MM-DD" or null,
+    "dispatchDate": "YYYY-MM-DD" or null,
+    "stops": [
+      {
+        "type": "pickup" | "dropoff",
+        "address": "full printed street, city, state, ZIP",
+        "sequence": number starting at 0 within that stop type
+      }
+    ],
+    "confidence": number from 0 to 1,
+    "warnings": string[]
+  } or null
 }
 
 Classification Rules:
@@ -126,6 +201,13 @@ Classification Rules:
 
 Field Rules:
 - Extract numbers, rates (e.g. "$2,400.00"), weights (e.g. "42,000 lbs"), dates (YYYY-MM-DD format if possible).
+- For a rate confirmation, include every pickup and delivery in the printed operational order. Preserve multiple pickups and multiple dropoffs. Do not collapse them into one origin and destination.
+- "payout" is the total carrier gross/flat rate. "lineHaul" excludes fuel surcharge and accessorials. "accessorials" is their total; explain components in "accessorialDetail".
+- "loadRef" is the broker load/order/confirmation number used to identify the load.
+- "broker" is the broker/logistics company issuing the confirmation, not the carrier.
+- Set "miles" only when mileage is explicitly printed. Never calculate or estimate it. When printed, it will later be marked as rate_con mileage.
+- A CamScanner file may still be a valid rate confirmation; classify from document content. Proofs of delivery, signed BOLs, receipts, and unrelated scans must have rateConDraft null.
+- Put a warning in rateConDraft.warnings for an incomplete address, unclear total, ambiguous broker, or low-confidence stop ordering.
 - "handwrittenNotes": Extract ONLY actual handwritten driver/receiver handwriting, signatures, stamped text, or modified numbers. If no handwriting is visible, set to null.
 - Return ONLY raw valid JSON.`;
 
@@ -136,7 +218,7 @@ Field Rules:
           { text: prompt },
           {
             inline_data: {
-              mime_type: mimeType.startsWith('image/') ? mimeType : 'image/jpeg',
+              mime_type: mimeType || 'application/pdf',
               data: imageB64,
             },
           },
@@ -149,8 +231,7 @@ Field Rules:
     },
   };
 
-  // Preferred model cascade: gemini-2.0-flash -> gemini-1.5-pro -> gemini-1.5-flash
-  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
   let lastError: Error | null = null;
 
   for (const modelName of modelsToTry) {
@@ -186,6 +267,16 @@ Field Rules:
       const regexRateConf = rawBody.match(/(?:Rate\s*Conf|Confirmation|Load|Agmt)\s*[:#\s]*([A-Z0-9-]{4,20})/i);
       const regexWeight = rawBody.match(/(?:Gross|Net|Weight|Total\s*Wt)\s*[:#\s]*([0-9,]{4,7}\s*(?:lbs|lb)?)/i);
       const regexRate = rawBody.match(/(?:Total\s*Rate|Total\s*Pay|Linehaul|Amount)\s*[:#\s]*(\$\s*[0-9,]+(?:\.[0-9]{2})?)/i);
+      const parsedDraft = normDocType === 'rate_confirmation'
+        ? normalizeRateConDraft(jsonParsed.rateConDraft, fileName, {
+            loadRef: jsonParsed.rateConfirmationNumber || regexRateConf?.[1]?.trim(),
+            payout: jsonParsed.totalRate || regexRate?.[1]?.trim(),
+            originAddress: jsonParsed.originAddress,
+            destinationAddress: jsonParsed.destinationAddress,
+            pickupDate: jsonParsed.pickupDate,
+            deliveryDate: jsonParsed.deliveryDate,
+          })
+        : undefined;
 
       return {
         documentType: normDocType,
@@ -202,7 +293,8 @@ Field Rules:
         weight: jsonParsed.weight || regexWeight?.[1]?.trim() || undefined,
         handwrittenNotes: jsonParsed.handwrittenNotes || undefined,
         rawText: rawBody,
-        confidence: 0.98,
+        confidence: parsedDraft?.confidence ?? 0.98,
+        rateConDraft: parsedDraft,
       };
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
@@ -220,6 +312,24 @@ function normalizeType(
   const text = `${rawType || ''} ${rawText || ''} ${fileName || ''}`.toLowerCase();
 
   if (
+    text.includes('proof of delivery') ||
+    text.includes('received by') ||
+    text.includes('consignee signature') ||
+    /\bpod\b/.test(text)
+  ) {
+    return 'proof_of_delivery';
+  }
+  if (
+    text.includes('rate confirmation') ||
+    text.includes('rate agreement') ||
+    text.includes('carrier pay') ||
+    text.includes('flat rate') ||
+    text.includes('linehaul') ||
+    text.includes('broker')
+  ) {
+    return 'rate_confirmation';
+  }
+  if (
     text.includes('lading') ||
     text.includes('bol') ||
     text.includes('straight bill') ||
@@ -228,25 +338,6 @@ function normalizeType(
     text.includes('bill of lading')
   ) {
     return 'bill_of_lading';
-  }
-  if (
-    text.includes('rate') ||
-    text.includes('confirm') ||
-    text.includes('broker') ||
-    text.includes('linehaul') ||
-    text.includes('carrier pay') ||
-    text.includes('flat rate')
-  ) {
-    return 'rate_confirmation';
-  }
-  if (
-    text.includes('delivery') ||
-    text.includes('pod') ||
-    text.includes('received by') ||
-    text.includes('consignee signature') ||
-    text.includes('proof of delivery')
-  ) {
-    return 'proof_of_delivery';
   }
   if (
     text.includes('scale') ||
@@ -261,7 +352,65 @@ function normalizeType(
     return 'receipt';
   }
 
-  return 'bill_of_lading';
+  return 'other';
+}
+
+function normalizeRateConDraft(
+  raw: Record<string, unknown> | null | undefined,
+  fileName: string | undefined,
+  fallback: {
+    loadRef?: string;
+    payout?: string;
+    originAddress?: string;
+    destinationAddress?: string;
+    pickupDate?: string;
+    deliveryDate?: string;
+  }
+): RateConDraft {
+  const rawStops = Array.isArray(raw?.stops) ? raw.stops : [];
+  const stops = rawStops
+    .filter((stop): stop is Record<string, unknown> => Boolean(stop && typeof stop === 'object'))
+    .map((stop, index) => ({
+      type: stop.type === 'dropoff' ? 'dropoff' as const : 'pickup' as const,
+      address: String(stop.address || '').trim(),
+      sequence: Number.isFinite(Number(stop.sequence)) ? Number(stop.sequence) : index,
+    }))
+    .filter((stop) => stop.address);
+
+  if (stops.length === 0 && fallback.originAddress) {
+    stops.push({ type: 'pickup', address: fallback.originAddress, sequence: 0 });
+  }
+  if (!stops.some((stop) => stop.type === 'dropoff') && fallback.destinationAddress) {
+    stops.push({ type: 'dropoff', address: fallback.destinationAddress, sequence: 0 });
+  }
+
+  const miles = raw?.miles ? String(raw.miles).trim() : undefined;
+  return {
+    sourceFile: fileName || 'rate-confirmation',
+    loadRef: String(raw?.loadRef || fallback.loadRef || '').trim() || undefined,
+    broker: String(raw?.broker || '').trim() || undefined,
+    payout: String(raw?.payout || fallback.payout || '').trim() || undefined,
+    lineHaul: String(raw?.lineHaul || '').trim() || undefined,
+    accessorials: String(raw?.accessorials || '').trim() || undefined,
+    accessorialDetail: String(raw?.accessorialDetail || '').trim() || undefined,
+    miles,
+    milesSource: miles ? 'rate_con' : undefined,
+    type: normalizeEquipment(raw?.type),
+    pickupDate: String(raw?.pickupDate || fallback.pickupDate || '').trim() || undefined,
+    deliveryDate: String(raw?.deliveryDate || fallback.deliveryDate || '').trim() || undefined,
+    dispatchDate: String(raw?.dispatchDate || '').trim() || undefined,
+    stops,
+    confidence: typeof raw?.confidence === 'number' ? raw.confidence : 0.75,
+    warnings: Array.isArray(raw?.warnings) ? raw.warnings.map(String) : [],
+  };
+}
+
+function normalizeEquipment(value: unknown): RateConDraft['type'] {
+  const text = String(value || '').toLowerCase();
+  if (text.includes('reefer') || text.includes('refrigerated')) return 'Reefer';
+  if (text.includes('flatbed') || text.includes('step deck')) return 'Flatbed';
+  if (text.includes('dry') || text.includes('van')) return 'Dry Van';
+  return undefined;
 }
 
 function generateDevMockExtraction(fileName: string): ExtractedDocData {

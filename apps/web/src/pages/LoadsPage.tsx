@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { LayoutGrid, List, Plus, Search } from 'lucide-react';
+import { LayoutGrid, List, Plus, Search, UploadCloud } from 'lucide-react';
 import { subscribeCompanyLoads, getCompanyDrivers } from '@silver-crown/shared';
 import type { Load, AppUser } from '@silver-crown/shared';
 import { useAuth } from '../context/AuthContext';
@@ -49,12 +49,20 @@ export default function LoadsPage() {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="font-[family-name:var(--font-bebas)] text-4xl tracking-wider">LOADS</h1>
-        <Link
-          to="/loads/new"
-          className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider hover:opacity-90"
-        >
-          <Plus size={16} /> New Load
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/loads/import"
+            className="flex items-center gap-2 border border-primary text-primary px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider hover:bg-primary/10"
+          >
+            <UploadCloud size={16} /> Import Rate Cons
+          </Link>
+          <Link
+            to="/loads/new"
+            className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wider hover:opacity-90"
+          >
+            <Plus size={16} /> New Load
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-4 mb-6">

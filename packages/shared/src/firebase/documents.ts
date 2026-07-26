@@ -158,6 +158,10 @@ export async function updateDocumentExtractedData(
   await updateDoc(doc(getFirebaseDb(), 'documents', docId), sanitizedUpdates);
 }
 
+export async function linkDocumentToLoad(docId: string, loadId: string): Promise<void> {
+  await updateDoc(doc(getFirebaseDb(), 'documents', docId), { loadId });
+}
+
 export async function deleteCompanyDocument(docId: string): Promise<void> {
   await deleteDoc(doc(getFirebaseDb(), 'documents', docId));
 }
