@@ -369,6 +369,8 @@ function ImportRow({
   const validation = draft ? validateRateConDraft(draft) : null;
   const pickups = draft ? stopDrafts(draft.stops, 'pickup') : [];
   const dropoffs = draft ? stopDrafts(draft.stops, 'dropoff') : [];
+  const stopCountLabel =
+    dropoffs.length === 1 ? '1 stop' : `${dropoffs.length} stops`;
   const statusIcon = item.status === 'ready'
     ? validation?.valid
       ? <CheckCircle2 className="text-primary" size={18} />
@@ -395,7 +397,7 @@ function ImportRow({
           <p className="text-on-surface-variant text-xs mt-1">
             {item.message ||
               (draft
-                ? `${draft.broker || 'Broker needed'} · ${draft.loadRef || 'Load # needed'} · ${draft.stops.length} stops`
+                ? `${draft.broker || 'Broker needed'} · ${draft.loadRef || 'Load # needed'} · ${stopCountLabel}`
                 : item.status)}
           </p>
         </div>
