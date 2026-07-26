@@ -15,6 +15,13 @@ function extraStopsHint(count: number): string | null {
   return `+${count} ${count === 1 ? 'stop' : 'stops'}`;
 }
 
+function formatPickupDate(value?: string): string {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString();
+}
+
 export default function LoadsPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -156,6 +163,7 @@ export default function LoadsPage() {
                 <tr className="border-b border-outline-variant text-on-surface-variant text-xs uppercase tracking-wider">
                   <th className="text-left p-4">Pickup</th>
                   <th className="text-left p-4">Drop-off</th>
+                  <th className="text-left p-4">Pickup Date</th>
                   <th className="text-left p-4">Broker</th>
                   <th className="text-left p-4">Load #</th>
                   <th className="text-left p-4">Status</th>
@@ -213,6 +221,9 @@ export default function LoadsPage() {
                         {dropoffHint && (
                           <p className="text-[10px] text-on-surface-variant mt-0.5">{dropoffHint}</p>
                         )}
+                      </td>
+                      <td className="p-4 text-on-surface-variant whitespace-nowrap">
+                        {formatPickupDate(load.pickupDate)}
                       </td>
                       <td className="p-4 text-on-surface-variant max-w-[9rem]">
                         <p className="truncate" title={load.broker || undefined}>
