@@ -218,9 +218,15 @@ async function callGeminiVisionApi(apiKey, fileUrl, base64Data, base64Pages, mim
             data: page.data,
         },
     }));
-    // Cheapest capable models first; 2.5-flash last (thinking disabled when used).
-    const modelsToTry = ['gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+    // Newer Flash-Lite first (2.5-flash / 2.0-flash return 404 for many new API keys).
+    const modelsToTry = [
+        'gemini-3.1-flash-lite',
+        'gemini-2.5-flash-lite',
+        'gemini-flash-latest',
+        'gemini-3-flash-preview',
+    ];
     let lastError = null;
+    const triedErrors = [];
     for (const modelName of modelsToTry) {
         try {
             const generationConfig = {
@@ -228,8 +234,8 @@ async function callGeminiVisionApi(apiKey, fileUrl, base64Data, base64Pages, mim
                 response_mime_type: 'application/json',
                 maxOutputTokens: 2048,
             };
-            // Disable thinking on 2.5 Flash family (default thinking is the main cost driver).
-            if (modelName.includes('2.5-flash')) {
+            // Gemini 2.5 Flash (non-lite) defaults thinking on — disable when we hit that alias.
+            if (/2\.5-flash(?!-lite)/i.test(modelName) || modelName === 'gemini-flash-latest') {
                 generationConfig.thinkingConfig = { thinkingBudget: 0 };
             }
             const payload = {
@@ -249,7 +255,12 @@ async function callGeminiVisionApi(apiKey, fileUrl, base64Data, base64Pages, mim
             if (!response.ok) {
                 const errText = await response.text();
                 console.warn(`Gemini model ${modelName} returned ${response.status}: ${errText}`);
+                triedErrors.push(`${modelName}: ${response.status}`);
                 lastError = new Error(`Gemini API error (${response.status}): ${errText}`);
+                // Retired models / missing IDs — try next immediately
+                if (response.status === 404 || /no longer available/i.test(errText)) {
+                    continue;
+                }
                 continue;
             }
             const result = await response.json();
@@ -322,7 +333,7 @@ async function callGeminiVisionApi(apiKey, fileUrl, base64Data, base64Pages, mim
             lastError = e instanceof Error ? e : new Error(String(e));
         }
     }
-    throw lastError || new Error('Failed to extract data with Gemini models.');
+    throw lastError || new Error(`Failed to extract data with Gemini models (${triedErrors.join('; ') || 'no details'}).`);
 }
 function parseMoney(value) {
     if (!value)
