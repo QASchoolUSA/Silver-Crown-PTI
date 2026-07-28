@@ -10,6 +10,8 @@ const US_STATE_CODES = new Set([
 
 const COUNTRY_SUFFIX = /^(usa|u\.s\.a\.|united states|united states of america)$/i;
 const STATE_TOKEN = /^([A-Za-z]{2})(?:\s+\d{5}(?:-\d{4})?)?$/;
+const STREET_TYPE =
+  String.raw`st|street|ave|avenue|blvd|boulevard|rd|road|way|dr|drive|hwy|highway|ln|lane|ct|court|cir|circle|pkwy|parkway|pl|place|trl|trail|ter|terrace|gate`;
 
 function titleCaseCity(city: string): string {
   const trimmed = city.trim().replace(/\s+/g, ' ');
@@ -27,6 +29,108 @@ function titleCaseCity(city: string): string {
       return word.charAt(0).toUpperCase() + word.slice(1);
     })
     .join(' ');
+}
+
+function formatStreetCityStateZip(
+  street: string,
+  city: string,
+  state: string,
+  zip?: string
+): string {
+  const st = street.trim().replace(/\s+/g, ' ');
+  const c = titleCaseCity(city);
+  const s = state.toUpperCase();
+  const z = (zip || '').trim();
+  if (!st || !c || !US_STATE_CODES.has(s)) {
+    return [st, c, z ? `${s} ${z}` : s].filter(Boolean).join(', ');
+  }
+  return z ? `${st}, ${c}, ${s} ${z}` : `${st}, ${c}, ${s}`;
+}
+
+/**
+ * Keep street + city/state/ZIP only — drop shed/facility/warehouse nicknames.
+ * Examples:
+ *   "GO FAST, 153 WINYAH RD, CONWAY, SC 29526" → "153 WINYAH RD, CONWAY, SC 29526"
+ *   "Shed:DALLAS DROP Address: 10420 PLANO RD DALLAS, TX 75238" → "10420 PLANO RD, DALLAS, TX 75238"
+ */
+export function normalizeStopAddress(address: string): string {
+  let raw = (address || '').trim();
+  if (!raw) return '';
+
+  // Integrity Express: "Shed:NAME Address: STREET CITY, ST ZIP"
+  const afterAddressLabel = raw.match(/\bAddress:\s*(.+)$/i);
+  if (afterAddressLabel) {
+    raw = afterAddressLabel[1].trim();
+  }
+  raw = raw
+    .replace(/^Shed:\s*[^\n]*?(?=\bAddress:|\b\d{1,6}\s)/i, '')
+    .replace(/^Shed:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Prefer street inside parentheses when facility wraps it: "(5500 Sheila St)"
+  const parenStreet = raw.match(
+    new RegExp(String.raw`\((\d[^)]*?\b(?:${STREET_TYPE})\.?)\)`, 'i')
+  );
+  const cityStateTail = raw.match(
+    /([A-Za-z .'-]+)\s*,\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*(?:,?\s*(?:USA|United States))?$/i
+  );
+  if (parenStreet && cityStateTail) {
+    const state = cityStateTail[2].toUpperCase();
+    if (US_STATE_CODES.has(state)) {
+      return formatStreetCityStateZip(
+        parenStreet[1],
+        cityStateTail[1],
+        state,
+        cityStateTail[3]
+      );
+    }
+  }
+
+  // Slice from the first street-number token (drops leading facility names).
+  const streetStart = raw.search(/\b\d{1,6}\s+[A-Za-z0-9]/);
+  if (streetStart < 0) return raw;
+  let rest = raw.slice(streetStart).trim();
+  // Drop trailing junk after ZIP (notes, phone, etc.)
+  rest = rest.replace(/\s+(?:Phone|Date|Time|Appt|Remarks|Pallets|Pieces)\b.*$/i, '').trim();
+
+  const withComma = rest.match(
+    new RegExp(
+      String.raw`^(\d[^,]*?\b(?:${STREET_TYPE})\.?)\s*,\s*([^,]+)\s*,\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$`,
+      'i'
+    )
+  );
+  if (withComma && US_STATE_CODES.has(withComma[3].toUpperCase())) {
+    return formatStreetCityStateZip(withComma[1], withComma[2], withComma[3], withComma[4]);
+  }
+
+  const noCommaAfterStreet = rest.match(
+    new RegExp(
+      String.raw`^(\d.+?\b(?:${STREET_TYPE})\.?)\s+([A-Za-z .'-]+)\s*,\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$`,
+      'i'
+    )
+  );
+  if (noCommaAfterStreet && US_STATE_CODES.has(noCommaAfterStreet[3].toUpperCase())) {
+    return formatStreetCityStateZip(
+      noCommaAfterStreet[1],
+      noCommaAfterStreet[2],
+      noCommaAfterStreet[3],
+      noCommaAfterStreet[4]
+    );
+  }
+
+  // "10420 PLANO RD DALLAS, TX 75238" — city may be ALL CAPS glued after street type
+  const glued = rest.match(
+    new RegExp(
+      String.raw`^(\d.+?\b(?:${STREET_TYPE})\.?)\s+([A-Z][A-Za-z .'-]+)\s*,\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$`,
+      'i'
+    )
+  );
+  if (glued && US_STATE_CODES.has(glued[3].toUpperCase())) {
+    return formatStreetCityStateZip(glued[1], glued[2], glued[3], glued[4]);
+  }
+
+  return rest;
 }
 
 /**

@@ -1,4 +1,5 @@
 import type { DocumentType, EquipmentType, RateConDraft, RateConStop } from '../types';
+import { normalizeStopAddress } from './addressFormat';
 import { normalizeDocumentType } from './freightParser';
 
 export interface ParseRateConfirmationResult {
@@ -291,19 +292,16 @@ function parsePriority1Stops(text: string): RateConStop[] {
     if (!cityMatch) continue;
     const city = cityMatch[1].replace(/\s+/g, ' ').trim();
     const beforeCity = body.slice(0, cityMatch.index).replace(/\s+/g, ' ').trim();
-    const facilityMatch = beforeCity.match(
-      /([A-Za-z][A-Za-z0-9 .,'&-]{2,80}(?:\([^)]+\))(?:\s*\([^)]+\))?)\s*$/
+    const streetMatch = beforeCity.match(
+      /(\d+[A-Za-z0-9 .#'-]*\b(?:st|street|ave|blvd|rd|way|dr|hwy|road|ln|ct)\b\.?)\s*$/i
     );
-    const facility = facilityMatch?.[1]
-      ?.replace(/^(?:Pieces|Quantity|Weight|Carton|Description|Contact|Packaging)[:\s].*$/i, '')
-      .replace(/^\d+\s+/, '')
-      .trim();
+    const street = streetMatch?.[1]?.trim();
     const seq = kind === 'pickup'
       ? stops.filter((s) => s.type === 'pickup').length
       : stops.filter((s) => s.type === 'dropoff').length;
     stops.push({
       type: kind,
-      address: sanitizeAddress(facility ? `${facility}, ${city}` : city),
+      address: sanitizeAddress(street ? `${street}, ${city}` : city),
       sequence: seq,
     });
   }
@@ -363,7 +361,6 @@ function parseAtnStops(text: string): RateConStop[] {
 
     let cityLine: string | undefined;
     let street: string | undefined;
-    let facility: string | undefined;
 
     for (const line of lines.slice(0, 8)) {
       const cityMatch = line.match(/^([A-Z][A-Z\s'.-]+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\b/);
@@ -383,15 +380,12 @@ function parseAtnStops(text: string): RateConStop[] {
         && /(st|street|ave|blvd|rd|way|dr|hwy|road|ln|ct|cir|circle|blvd)\b/i.test(cleaned)
       ) {
         street = cleaned;
-        continue;
-      }
-      if (!facility && /[A-Za-z]/.test(cleaned) && cleaned.length < 80 && !/appointment/i.test(cleaned)) {
-        facility = cleaned;
+        break;
       }
     }
 
     if (!cityLine) continue;
-    const parts = [facility, street, cityLine].filter(Boolean);
+    const parts = [street, cityLine].filter(Boolean);
     const seq = kind === 'pickup'
       ? stops.filter((s) => s.type === 'pickup').length
       : stops.filter((s) => s.type === 'dropoff').length;
@@ -430,7 +424,6 @@ function parseBm2Stops(text: string): RateConStop[] {
           )
       );
 
-    let facility: string | undefined;
     let street: string | undefined;
     let cityLine: string | undefined;
 
@@ -450,13 +443,10 @@ function parseBm2Stops(text: string): RateConStop[] {
         street = line;
         continue;
       }
-      if (!facility && !street && !cityLine && /[A-Za-z]/.test(line) && line.length < 90) {
-        facility = line;
-      }
     }
 
     if (!cityLine) continue;
-    const parts = [facility, street, cityLine].filter(Boolean);
+    const parts = [street, cityLine].filter(Boolean);
     const seq = kind === 'pickup'
       ? stops.filter((s) => s.type === 'pickup').length
       : stops.filter((s) => s.type === 'dropoff').length;
@@ -849,7 +839,10 @@ export function parseRateConfirmation(
     pickupDate: dates.pickupDate,
     deliveryDate: dates.deliveryDate,
     weight,
-    stops,
+    stops: stops.map((stop) => ({
+      ...stop,
+      address: normalizeStopAddress(stop.address),
+    })),
     confidence: warnings.length ? 0.7 : 0.9,
     warnings,
   };

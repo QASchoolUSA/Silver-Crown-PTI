@@ -154,7 +154,7 @@ STAGE 2: Extract structured JSON matching this exact schema:
     "stops": [
       {
         "type": "pickup" | "dropoff",
-        "address": "facility name, street, city, state ZIP (full printed operational address)",
+        "address": "street, city, state ZIP only (no facility/shed name)",
         "sequence": number starting at 0 within that stop type
       }
     ],
@@ -171,8 +171,8 @@ Classification Rules:
 
 Rate Confirmation / VLM Field Rules:
 - Priority 1 / Carrier Load Tender / Line Haul / Flat Rate documents are rate_confirmation even when they mention PODs for invoicing.
-- Ignore remit-to, corporate office, billing office, factoring, and P.O. Box addresses. Only extract actual pickup (shipper) and dropoff (consignee) facilities.
-- For each stop, prefer facility_name + street + city/state/ZIP combined into one "address" string.
+- Ignore remit-to, corporate office, billing office, factoring, and P.O. Box addresses. Only extract actual pickup (shipper) and dropoff (consignee) stop streets.
+- For each stop address, use ONLY street + city + state + ZIP. Do NOT include shed name, facility name, warehouse nickname, company name on the dock, or "Shed:…" labels. Integrity Express lines like "Shed:GO FAST Address: 153 WINYAH RD CONWAY, SC 29526" must become "153 WINYAH RD, CONWAY, SC 29526".
 - Include every pickup and delivery in the printed operational order. Preserve multiple pickups and multiple dropoffs. Do not collapse them into one origin and destination.
 - "payout" is the total carrier gross/flat rate. "lineHaul" excludes fuel surcharge and accessorials. "accessorials" is their total; explain components (FSC, detention, lumper, tarp, stop-off, etc.) in "accessorialDetail".
 - "loadRef" is the broker load/order/confirmation number used to identify the load.
@@ -432,21 +432,74 @@ function normalizeType(rawType, rawText, fileName) {
         return declared;
     return 'other';
 }
+const STREET_TYPE = String.raw `st|street|ave|avenue|blvd|boulevard|rd|road|way|dr|drive|hwy|highway|ln|lane|ct|court|cir|circle|pkwy|parkway|pl|place|trl|trail|ter|terrace|gate`;
+const US_STATE_CODES_SET = new Set([
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA',
+    'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT',
+    'VA', 'WA', 'WV', 'WI', 'WY', 'DC', 'PR', 'VI', 'GU', 'AS', 'MP',
+]);
+/** Drop shed/facility names; keep street + city/state/ZIP only (mirrored from shared addressFormat). */
+function normalizeStopAddress(address) {
+    let raw = (address || '').trim();
+    if (!raw)
+        return '';
+    const afterAddressLabel = raw.match(/\bAddress:\s*(.+)$/i);
+    if (afterAddressLabel)
+        raw = afterAddressLabel[1].trim();
+    raw = raw
+        .replace(/^Shed:\s*[^\n]*?(?=\bAddress:|\b\d{1,6}\s)/i, '')
+        .replace(/^Shed:\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const streetStart = raw.search(/\b\d{1,6}\s+[A-Za-z0-9]/);
+    if (streetStart < 0)
+        return raw;
+    let rest = raw.slice(streetStart).trim();
+    rest = rest.replace(/\s+(?:Phone|Date|Time|Appt|Remarks|Pallets|Pieces)\b.*$/i, '').trim();
+    const withComma = rest.match(new RegExp(String.raw `^(\d[^,]*?\b(?:${STREET_TYPE})\.?)\s*,\s*([^,]+)\s*,\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$`, 'i'));
+    if (withComma && US_STATE_CODES_SET.has(withComma[3].toUpperCase())) {
+        const city = withComma[2].trim().replace(/\s+/g, ' ');
+        const zip = (withComma[4] || '').trim();
+        const state = withComma[3].toUpperCase();
+        return zip
+            ? `${withComma[1].trim()}, ${city}, ${state} ${zip}`
+            : `${withComma[1].trim()}, ${city}, ${state}`;
+    }
+    const noComma = rest.match(new RegExp(String.raw `^(\d.+?\b(?:${STREET_TYPE})\.?)\s+([A-Za-z .'-]+)\s*,\s*([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?\s*$`, 'i'));
+    if (noComma && US_STATE_CODES_SET.has(noComma[3].toUpperCase())) {
+        const city = noComma[2].trim().replace(/\s+/g, ' ');
+        const zip = (noComma[4] || '').trim();
+        const state = noComma[3].toUpperCase();
+        return zip
+            ? `${noComma[1].trim()}, ${city}, ${state} ${zip}`
+            : `${noComma[1].trim()}, ${city}, ${state}`;
+    }
+    return rest;
+}
 function normalizeRateConDraft(raw, fileName, fallback) {
     const rawStops = Array.isArray(raw === null || raw === void 0 ? void 0 : raw.stops) ? raw.stops : [];
     const stops = rawStops
         .filter((stop) => Boolean(stop && typeof stop === 'object'))
         .map((stop, index) => ({
         type: stop.type === 'dropoff' ? 'dropoff' : 'pickup',
-        address: String(stop.address || '').trim(),
+        address: normalizeStopAddress(String(stop.address || '').trim()),
         sequence: Number.isFinite(Number(stop.sequence)) ? Number(stop.sequence) : index,
     }))
         .filter((stop) => stop.address);
     if (stops.length === 0 && fallback.originAddress) {
-        stops.push({ type: 'pickup', address: fallback.originAddress, sequence: 0 });
+        stops.push({
+            type: 'pickup',
+            address: normalizeStopAddress(fallback.originAddress),
+            sequence: 0,
+        });
     }
     if (!stops.some((stop) => stop.type === 'dropoff') && fallback.destinationAddress) {
-        stops.push({ type: 'dropoff', address: fallback.destinationAddress, sequence: 0 });
+        stops.push({
+            type: 'dropoff',
+            address: normalizeStopAddress(fallback.destinationAddress),
+            sequence: 0,
+        });
     }
     const miles = (raw === null || raw === void 0 ? void 0 : raw.miles) ? String(raw.miles).trim() : undefined;
     return {

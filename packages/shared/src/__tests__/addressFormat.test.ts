@@ -1,5 +1,39 @@
-import { formatCityState, getLoadCityStates } from '../utils/addressFormat';
+import { formatCityState, getLoadCityStates, normalizeStopAddress } from '../utils/addressFormat';
 import type { Load } from '../types';
+
+describe('normalizeStopAddress', () => {
+  it('strips Integrity Express shed names and formats street-only addresses', () => {
+    expect(
+      normalizeStopAddress('GO FAST, 153 WINYAH RD, CONWAY, SC 29526')
+    ).toBe('153 WINYAH RD, Conway, SC 29526');
+    expect(
+      normalizeStopAddress('DALLAS DROP, 10420 PLANO RD, DALLAS, TX 75238')
+    ).toBe('10420 PLANO RD, Dallas, TX 75238');
+    expect(
+      normalizeStopAddress(
+        'BEAR VALLEY APATITE SELF STORAGE, 12217 APATITE AVE, VICTORVILLE, CA 92395'
+      )
+    ).toBe('12217 APATITE AVE, Victorville, CA 92395');
+  });
+
+  it('parses Shed:/Address: IEL lines without a comma after the street', () => {
+    expect(
+      normalizeStopAddress('Shed:GO FAST Address: 153 WINYAH RD CONWAY, SC 29526')
+    ).toBe('153 WINYAH RD, Conway, SC 29526');
+    expect(
+      normalizeStopAddress('Shed:DALLAS DROP Address: 10420 PLANO RD DALLAS, TX 75238')
+    ).toBe('10420 PLANO RD, Dallas, TX 75238');
+    expect(
+      normalizeStopAddress(
+        'Shed:BEAR VALLEY APATITE SELF STORAGE Address: 12217 APATITE AVE VICTORVILLE, CA 92395'
+      )
+    ).toBe('12217 APATITE AVE, Victorville, CA 92395');
+  });
+
+  it('leaves city/state-only addresses unchanged when no street is present', () => {
+    expect(normalizeStopAddress('Chicago, IL')).toBe('Chicago, IL');
+  });
+});
 
 describe('formatCityState', () => {
   it('extracts City, ST from a full street address with ZIP and country', () => {

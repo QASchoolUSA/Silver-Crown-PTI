@@ -1,4 +1,5 @@
 import type { RateConDraft } from '../types';
+import { normalizeStopAddress } from './addressFormat';
 
 const CORPORATE_KEYWORDS = [
   'remit to',
@@ -29,6 +30,14 @@ export function reconcileRateConDraft(draft: RateConDraft): RateConDraft {
   const errors: string[] = [];
   const warnings: string[] = [...(draft.warnings || [])];
   let confidencePenalty = 0;
+
+  draft = {
+    ...draft,
+    stops: draft.stops.map((stop) => ({
+      ...stop,
+      address: normalizeStopAddress(stop.address),
+    })),
+  };
 
   const payout = parseMoney(draft.payout);
   const lineHaul = parseMoney(draft.lineHaul);
