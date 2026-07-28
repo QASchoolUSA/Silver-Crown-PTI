@@ -1,67 +1,90 @@
 import type { DocumentType, ExtractedDocData } from '../types';
 
+const VALID_DOC_TYPES: DocumentType[] = [
+  'bill_of_lading',
+  'rate_confirmation',
+  'proof_of_delivery',
+  'receipt',
+  'other',
+];
+
+function isStrongRateConfirmation(text: string, fileName: string = ''): boolean {
+  const hay = `${text}\n${fileName}`.toLowerCase();
+  return (
+    /\brate confirmation\b/.test(hay)
+    || /\brate conf\b/.test(hay)
+    || /\bload confirmation\b/.test(hay)
+    || /\bload tender\b/.test(hay)
+    || /\bcarrier load tender\b/.test(hay)
+    || /\bline\s*haul\b/.test(hay)
+    || /\blinehaul\b/.test(hay)
+    || /\bcarrier pay\b/.test(hay)
+    || /\bflat rate\b/.test(hay)
+    || /\bagreed rate\b/.test(hay)
+    || /carrier_rate_confirmation|rate-confirmation|rateconfirmation/i.test(fileName)
+  );
+}
+
+function isStrongProofOfDelivery(text: string, fileName: string = ''): boolean {
+  const hay = `${text}\n${fileName}`.toLowerCase();
+  // Rate cons often say "send POD with invoice" — that alone is not a POD document.
+  if (isStrongRateConfirmation(hay, fileName)) return false;
+  return (
+    /\bproof of delivery\b/.test(hay)
+    || /\breceived in good order\b/.test(hay)
+    || /\bconsignee signature\b/.test(hay)
+    || /\bdelivery receipt\b/.test(hay)
+    || (/\breceived by\b/.test(hay) && /\bsignature\b/.test(hay))
+    || (/^\s*camscanner/i.test(fileName) && /\b(delivered|signature|proof of delivery)\b/i.test(hay))
+  );
+}
+
 export function normalizeDocumentType(
   rawType?: string,
   rawText?: string,
   fileName?: string
 ): DocumentType {
   const text = `${rawType || ''} ${rawText || ''} ${fileName || ''}`.toLowerCase();
+  const declared = (rawType || '').trim().toLowerCase() as DocumentType;
 
-  // 1. Bill of Lading (BOL) Keywords
+  // Prefer rate confirmation before POD/BOL — rate cons mention "POD", "shipper", "BOL" often.
+  if (isStrongRateConfirmation(text, fileName || '')) {
+    return 'rate_confirmation';
+  }
+
+  if (isStrongProofOfDelivery(text, fileName || '')) {
+    return 'proof_of_delivery';
+  }
+
+  // Bill of Lading — avoid bare "shipper"/"consignee" (common on rate cons too)
   if (
-    text.includes('bill of lading') ||
-    text.includes('straight bill') ||
-    text.includes('lading') ||
-    text.includes('bol #') ||
-    text.includes('b/l #') ||
-    text.includes('bol:') ||
-    text.includes('b/l:') ||
-    text.includes('shipper') ||
-    text.includes('consignee') ||
-    text.includes('freight bill')
+    text.includes('bill of lading')
+    || text.includes('straight bill')
+    || text.includes('bol #')
+    || text.includes('b/l #')
+    || text.includes('bol:')
+    || text.includes('b/l:')
+    || text.includes('freight bill')
+    || (/\blading\b/.test(text) && !/\brate confirmation\b/.test(text))
   ) {
     return 'bill_of_lading';
   }
 
-  // 2. Rate Confirmation Keywords
   if (
-    text.includes('rate confirmation') ||
-    text.includes('rate conf') ||
-    text.includes('load confirmation') ||
-    text.includes('rate lock') ||
-    text.includes('linehaul') ||
-    text.includes('carrier pay')
-  ) {
-    return 'rate_confirmation';
-  }
-
-  // 3. Proof of Delivery (POD) Keywords
-  if (
-    text.includes('proof of delivery') ||
-    text.includes('pod') ||
-    text.includes('delivery receipt') ||
-    text.includes('received in good order') ||
-    text.includes('consignee signature') ||
-    text.includes('delivered date')
-  ) {
-    return 'proof_of_delivery';
-  }
-
-  // 4. Scale Tickets & Receipts Keywords
-  if (
-    text.includes('cat scale') ||
-    text.includes('weight ticket') ||
-    text.includes('scale ticket') ||
-    text.includes('gross') ||
-    text.includes('tare') ||
-    text.includes('fuel receipt') ||
-    text.includes('lumper')
+    text.includes('cat scale')
+    || text.includes('weight ticket')
+    || text.includes('scale ticket')
+    || text.includes('fuel receipt')
+    || text.includes('lumper')
   ) {
     return 'receipt';
   }
 
-  // Default to Bill of Lading for trucking document uploads
-  return 'bill_of_lading';
+  if (VALID_DOC_TYPES.includes(declared)) {
+    return declared;
+  }
+
+  return 'other';
 }
 
 /**

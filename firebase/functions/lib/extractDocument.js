@@ -166,10 +166,11 @@ STAGE 2: Extract structured JSON matching this exact schema:
 Classification Rules:
 1. "bill_of_lading": Contains terms like "Bill of Lading", "BOL", "Straight Bill of Lading", Shipper, Consignee, commodity list, piece counts, trailer/seal #.
 2. "rate_confirmation": Contains "Rate Confirmation", "Confirmation #", "Broker", "Load Agreement", carrier payout/rate ($ amount), linehaul, origin/destination.
-3. "proof_of_delivery": Contains "Proof of Delivery", "POD", "Received By", delivery date/timestamp, consignee signature, or "Delivered".
+3. "proof_of_delivery": Title or primary purpose is Proof of Delivery / delivery receipt with receiver signature. Mentions of "send POD with invoice" on a rate confirmation do NOT make it a POD.
 4. "receipt": Weight tickets (CAT Scale), Fuel receipts, Lumper receipts, Toll receipts, Maintenance invoices.
 
 Rate Confirmation / VLM Field Rules:
+- Priority 1 / Carrier Load Tender / Line Haul / Flat Rate documents are rate_confirmation even when they mention PODs for invoicing.
 - Ignore remit-to, corporate office, billing office, factoring, and P.O. Box addresses. Only extract actual pickup (shipper) and dropoff (consignee) facilities.
 - For each stop, prefer facility_name + street + city/state/ZIP combined into one "address" string.
 - Include every pickup and delivery in the printed operational order. Preserve multiple pickups and multiple dropoffs. Do not collapse them into one origin and destination.
@@ -370,40 +371,65 @@ function reconcileRateConDraft(draft) {
     const reconciled = Math.max(0, Math.min(1, base - confidencePenalty));
     return Object.assign(Object.assign({}, draft), { confidence: Math.round(reconciled * 100) / 100, warnings: [...new Set([...warnings, ...errors.map((e) => `Error: ${e}`)])] });
 }
+function isStrongRateConfirmation(text, fileName = '') {
+    const hay = `${text}\n${fileName}`.toLowerCase();
+    return (/\brate confirmation\b/.test(hay)
+        || /\brate conf\b/.test(hay)
+        || /\bload confirmation\b/.test(hay)
+        || /\bload tender\b/.test(hay)
+        || /\bcarrier load tender\b/.test(hay)
+        || /\bline\s*haul\b/.test(hay)
+        || /\blinehaul\b/.test(hay)
+        || /\bcarrier pay\b/.test(hay)
+        || /\bflat rate\b/.test(hay)
+        || /\bagreed rate\b/.test(hay)
+        || /\brate agreement\b/.test(hay)
+        || /carrier_rate_confirmation|rate-confirmation|rateconfirmation/i.test(fileName));
+}
+function isStrongProofOfDelivery(text, fileName = '') {
+    const hay = `${text}\n${fileName}`.toLowerCase();
+    // Rate cons often say "send POD with invoice" — that alone is not a POD document.
+    if (isStrongRateConfirmation(hay, fileName))
+        return false;
+    return (/\bproof of delivery\b/.test(hay)
+        || /\breceived in good order\b/.test(hay)
+        || /\bconsignee signature\b/.test(hay)
+        || /\bdelivery receipt\b/.test(hay)
+        || (/\breceived by\b/.test(hay) && /\bsignature\b/.test(hay))
+        || (/^\s*camscanner/i.test(fileName) && /\b(delivered|signature|proof of delivery)\b/i.test(hay)));
+}
 function normalizeType(rawType, rawText, fileName) {
     const text = `${rawType || ''} ${rawText || ''} ${fileName || ''}`.toLowerCase();
-    if (text.includes('proof of delivery')
-        || text.includes('received by')
-        || text.includes('consignee signature')
-        || /\bpod\b/.test(text)) {
-        return 'proof_of_delivery';
-    }
-    if (text.includes('rate confirmation')
-        || text.includes('rate agreement')
-        || text.includes('carrier pay')
-        || text.includes('flat rate')
-        || text.includes('linehaul')
-        || text.includes('broker')) {
+    const declared = (rawType || '').trim().toLowerCase();
+    if (isStrongRateConfirmation(text, fileName || '')) {
         return 'rate_confirmation';
     }
-    if (text.includes('lading')
-        || text.includes('bol')
+    if (isStrongProofOfDelivery(text, fileName || '')) {
+        return 'proof_of_delivery';
+    }
+    if (text.includes('bill of lading')
         || text.includes('straight bill')
-        || text.includes('shipper')
-        || text.includes('consignee')
-        || text.includes('bill of lading')) {
+        || text.includes('bol #')
+        || text.includes('b/l #')
+        || (/\blading\b/.test(text) && !/\brate confirmation\b/.test(text))) {
         return 'bill_of_lading';
     }
-    if (text.includes('scale')
-        || text.includes('cat scale')
-        || text.includes('gross')
-        || text.includes('tare')
-        || text.includes('receipt')
-        || text.includes('fuel')
-        || text.includes('lumper')
-        || text.includes('weight ticket')) {
+    if (text.includes('cat scale')
+        || text.includes('weight ticket')
+        || text.includes('scale ticket')
+        || text.includes('fuel receipt')
+        || text.includes('lumper')) {
         return 'receipt';
     }
+    const valid = [
+        'bill_of_lading',
+        'rate_confirmation',
+        'proof_of_delivery',
+        'receipt',
+        'other',
+    ];
+    if (valid.includes(declared))
+        return declared;
     return 'other';
 }
 function normalizeRateConDraft(raw, fileName, fallback) {
