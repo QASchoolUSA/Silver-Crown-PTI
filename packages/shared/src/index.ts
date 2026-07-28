@@ -12,6 +12,7 @@ export * from './firebase/companies';
 export * from './firebase/users';
 export * from './firebase/geocode';
 export * from './firebase/documents';
+export * from './firebase/extractDocument';
 export * from './firebase/rateConImports';
 export * from './weather/nws';
 export * from './utils/pdf';
@@ -23,5 +24,6 @@ export * from './utils/freightParser';
 export * from './utils/imagePreprocess';
 export * from './utils/rateConDrafts';
 export * from './utils/rateConParser';
+export * from './utils/rateConReconcile';
 export * from './utils/addressFormat';
 

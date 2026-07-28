@@ -1,3 +1,7 @@
+/**
+ * Upgrade extractDocument Cloud Function with VLM-quality rate-con prompts,
+ * multi-page image parts, financial reconcile, and Gemini model fallbacks.
+ */
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
@@ -10,6 +14,9 @@ export interface ExtractDocumentRequest {
   fileName: string;
   fileType: string;
   base64Data?: string;
+  /** Additional page images (JPEG/PNG base64 without data: prefix). */
+  base64Pages?: string[];
+  apiKey?: string;
 }
 
 export interface ExtractedDocData {
@@ -54,12 +61,30 @@ interface RateConDraft {
   warnings?: string[];
 }
 
+const CORPORATE_KEYWORDS = [
+  'remit to',
+  'corporate hq',
+  'billing office',
+  'p.o. box',
+  'po box',
+  'factoring',
+];
+
 export const extractDocumentData = onCall({ secrets: [geminiApiKey] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Must be signed in to extract document data.');
   }
 
-  const { documentId, fileUrl, fileName, fileType, base64Data, apiKey: requestApiKey } = request.data as ExtractDocumentRequest & { apiKey?: string };
+  const {
+    documentId,
+    fileUrl,
+    fileName,
+    fileType,
+    base64Data,
+    base64Pages,
+    apiKey: requestApiKey,
+  } = request.data as ExtractDocumentRequest;
+
   if (!documentId) {
     throw new HttpsError('invalid-argument', 'documentId is required.');
   }
@@ -81,19 +106,32 @@ export const extractDocumentData = onCall({ secrets: [geminiApiKey] }, async (re
     throw new HttpsError('permission-denied', 'Admin access to this document is required.');
   }
 
-  const apiKey = requestApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
+  // Secret is injected as GEMINI_API_KEY when secrets: [geminiApiKey] is set.
+  let apiKey = requestApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
+  if (!apiKey) {
+    try {
+      apiKey = geminiApiKey.value();
+    } catch {
+      apiKey = undefined;
+    }
+  }
 
   try {
     let extracted: ExtractedDocData;
 
     if (apiKey) {
-      extracted = await callGeminiVisionApi(apiKey, fileUrl, base64Data, fileType, fileName);
+      extracted = await callGeminiVisionApi(
+        apiKey,
+        fileUrl,
+        base64Data,
+        base64Pages,
+        fileType,
+        fileName
+      );
     } else {
-      // Intelligent fallback when API key is not configured in local environment
       extracted = generateDevMockExtraction(fileName);
     }
 
-    // Update Firestore document with extracted data & status
     await docRef.update({
       extractedData: stripUndefined(extracted),
       docType: extracted.documentType || 'other',
@@ -126,33 +164,11 @@ function stripUndefined<T>(value: T): T {
   return value;
 }
 
-async function callGeminiVisionApi(
-  apiKey: string,
-  fileUrl: string,
-  base64Data?: string,
-  mimeType: string = 'image/jpeg',
-  fileName?: string
-): Promise<ExtractedDocData> {
-  let imageB64 = base64Data;
+function buildVisionPrompt(): string {
+  return `You are a freight-document extraction engine used by experienced truck dispatchers. Transcribe the document and return factual data only. Never infer printed miles, money, addresses, or stop order.
 
-  if (!imageB64 && fileUrl) {
-    try {
-      const resp = await fetch(fileUrl);
-      const arrayBuffer = await resp.arrayBuffer();
-      imageB64 = Buffer.from(arrayBuffer).toString('base64');
-    } catch (e) {
-      console.warn('Could not fetch fileUrl directly, proceeding without image bytes:', e);
-    }
-  }
-
-  if (!imageB64) {
-    throw new Error('No image base64 data available to process with Gemini.');
-  }
-
-  const prompt = `You are a freight-document extraction engine used by experienced truck dispatchers. Transcribe the document and return factual data only. Never infer printed miles, money, addresses, or stop order.
-
-Perform a 2-stage analysis of this document image:
-STAGE 1: Transcribe ALL text on the page into "rawText" (including headers, table cells, stamps, seal numbers, and handwritten notes).
+Perform a 2-stage analysis of this document image (or multi-page images):
+STAGE 1: Transcribe ALL text on the page(s) into "rawText" (including headers, table cells, stamps, seal numbers, and handwritten notes).
 STAGE 2: Extract structured JSON matching this exact schema:
 {
   "documentType": "bill_of_lading" | "rate_confirmation" | "proof_of_delivery" | "receipt" | "other",
@@ -184,7 +200,7 @@ STAGE 2: Extract structured JSON matching this exact schema:
     "stops": [
       {
         "type": "pickup" | "dropoff",
-        "address": "full printed street, city, state, ZIP",
+        "address": "facility name, street, city, state ZIP (full printed operational address)",
         "sequence": number starting at 0 within that stop type
       }
     ],
@@ -199,30 +215,74 @@ Classification Rules:
 3. "proof_of_delivery": Contains "Proof of Delivery", "POD", "Received By", delivery date/timestamp, consignee signature, or "Delivered".
 4. "receipt": Weight tickets (CAT Scale), Fuel receipts, Lumper receipts, Toll receipts, Maintenance invoices.
 
-Field Rules:
-- Extract numbers, rates (e.g. "$2,400.00"), weights (e.g. "42,000 lbs"), dates (YYYY-MM-DD format if possible).
-- For a rate confirmation, include every pickup and delivery in the printed operational order. Preserve multiple pickups and multiple dropoffs. Do not collapse them into one origin and destination.
-- "payout" is the total carrier gross/flat rate. "lineHaul" excludes fuel surcharge and accessorials. "accessorials" is their total; explain components in "accessorialDetail".
+Rate Confirmation / VLM Field Rules:
+- Ignore remit-to, corporate office, billing office, factoring, and P.O. Box addresses. Only extract actual pickup (shipper) and dropoff (consignee) facilities.
+- For each stop, prefer facility_name + street + city/state/ZIP combined into one "address" string.
+- Include every pickup and delivery in the printed operational order. Preserve multiple pickups and multiple dropoffs. Do not collapse them into one origin and destination.
+- "payout" is the total carrier gross/flat rate. "lineHaul" excludes fuel surcharge and accessorials. "accessorials" is their total; explain components (FSC, detention, lumper, tarp, stop-off, etc.) in "accessorialDetail".
 - "loadRef" is the broker load/order/confirmation number used to identify the load.
 - "broker" is the broker/logistics company issuing the confirmation, not the carrier.
-- Set "miles" only when mileage is explicitly printed. Never calculate or estimate it. When printed, it will later be marked as rate_con mileage.
+- Set "miles" only when mileage is explicitly printed. Never calculate or estimate it.
 - A CamScanner file may still be a valid rate confirmation; classify from document content. Proofs of delivery, signed BOLs, receipts, and unrelated scans must have rateConDraft null.
 - Put a warning in rateConDraft.warnings for an incomplete address, unclear total, ambiguous broker, or low-confidence stop ordering.
 - "handwrittenNotes": Extract ONLY actual handwritten driver/receiver handwriting, signatures, stamped text, or modified numbers. If no handwriting is visible, set to null.
 - Return ONLY raw valid JSON.`;
+}
+
+async function callGeminiVisionApi(
+  apiKey: string,
+  fileUrl: string,
+  base64Data?: string,
+  base64Pages?: string[],
+  mimeType: string = 'image/jpeg',
+  fileName?: string
+): Promise<ExtractedDocData> {
+  const pages: Array<{ mime: string; data: string }> = [];
+
+  if (base64Pages?.length) {
+    for (const page of base64Pages) {
+      const cleaned = page.replace(/^data:[^;]+;base64,/, '');
+      if (cleaned) pages.push({ mime: 'image/jpeg', data: cleaned });
+    }
+  }
+
+  if (!pages.length && base64Data) {
+    const cleaned = base64Data.replace(/^data:[^;]+;base64,/, '');
+    const mime = mimeType?.startsWith('image/')
+      ? mimeType
+      : mimeType === 'application/pdf'
+        ? 'application/pdf'
+        : 'image/jpeg';
+    pages.push({ mime, data: cleaned });
+  }
+
+  if (!pages.length && fileUrl) {
+    try {
+      const resp = await fetch(fileUrl);
+      const arrayBuffer = await resp.arrayBuffer();
+      const b64 = Buffer.from(arrayBuffer).toString('base64');
+      const mime = mimeType || 'image/jpeg';
+      pages.push({ mime, data: b64 });
+    } catch (e) {
+      console.warn('Could not fetch fileUrl directly, proceeding without image bytes:', e);
+    }
+  }
+
+  if (!pages.length) {
+    throw new Error('No image base64 data available to process with Gemini.');
+  }
+
+  const imageParts = pages.map((page) => ({
+    inline_data: {
+      mime_type: page.mime,
+      data: page.data,
+    },
+  }));
 
   const payload = {
     contents: [
       {
-        parts: [
-          { text: prompt },
-          {
-            inline_data: {
-              mime_type: mimeType || 'application/pdf',
-              data: imageB64,
-            },
-          },
-        ],
+        parts: [{ text: buildVisionPrompt() }, ...imageParts],
       },
     ],
     generationConfig: {
@@ -231,7 +291,7 @@ Field Rules:
     },
   };
 
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
   let lastError: Error | null = null;
 
   for (const modelName of modelsToTry) {
@@ -260,14 +320,13 @@ Field Rules:
       const cleanedText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
       const jsonParsed = JSON.parse(cleanedText);
 
-      // Heuristic fallback text parsing to fill any missing fields from rawText
       const rawBody = jsonParsed.rawText || cleanedText;
       const normDocType = normalizeType(jsonParsed.documentType, rawBody, fileName);
       const regexBol = rawBody.match(/(?:BOL|B\/L|Bill\s*of\s*Lading|Order|Ref)\s*[:#\s]*([A-Z0-9-]{4,25})/i);
       const regexRateConf = rawBody.match(/(?:Rate\s*Conf|Confirmation|Load|Agmt)\s*[:#\s]*([A-Z0-9-]{4,20})/i);
       const regexWeight = rawBody.match(/(?:Gross|Net|Weight|Total\s*Wt)\s*[:#\s]*([0-9,]{4,7}\s*(?:lbs|lb)?)/i);
       const regexRate = rawBody.match(/(?:Total\s*Rate|Total\s*Pay|Linehaul|Amount)\s*[:#\s]*(\$\s*[0-9,]+(?:\.[0-9]{2})?)/i);
-      const parsedDraft = normDocType === 'rate_confirmation'
+      let parsedDraft = normDocType === 'rate_confirmation'
         ? normalizeRateConDraft(jsonParsed.rateConDraft, fileName, {
             loadRef: jsonParsed.rateConfirmationNumber || regexRateConf?.[1]?.trim(),
             payout: jsonParsed.totalRate || regexRate?.[1]?.trim(),
@@ -277,6 +336,10 @@ Field Rules:
             deliveryDate: jsonParsed.deliveryDate,
           })
         : undefined;
+
+      if (parsedDraft) {
+        parsedDraft = reconcileRateConDraft(parsedDraft);
+      }
 
       return {
         documentType: normDocType,
@@ -304,6 +367,91 @@ Field Rules:
   throw lastError || new Error('Failed to extract data with Gemini models.');
 }
 
+function parseMoney(value?: string): number | null {
+  if (!value) return null;
+  const n = Number.parseFloat(String(value).replace(/[$,\s]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseMiles(value?: string): number | null {
+  if (!value) return null;
+  const n = Number.parseFloat(String(value).replace(/[,]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Inlined FinancialReconciler for Cloud Functions (no shared package dependency). */
+function reconcileRateConDraft(draft: RateConDraft): RateConDraft {
+  const errors: string[] = [];
+  const warnings: string[] = [...(draft.warnings || [])];
+  let confidencePenalty = 0;
+
+  const payout = parseMoney(draft.payout);
+  const lineHaul = parseMoney(draft.lineHaul);
+  const accessorials = parseMoney(draft.accessorials);
+  const miles = parseMiles(draft.miles);
+
+  if (payout != null && payout <= 0) {
+    errors.push('Total price is zero or negative.');
+    confidencePenalty += 0.4;
+  }
+
+  if (lineHaul != null && accessorials != null && payout != null) {
+    const sum = lineHaul + accessorials;
+    if (Math.abs(sum - payout) > 0.05) {
+      warnings.push(
+        `Linehaul ($${lineHaul.toFixed(2)}) + accessorials ($${accessorials.toFixed(2)}) does not match payout ($${payout.toFixed(2)}).`
+      );
+      confidencePenalty += 0.15;
+    }
+  } else if (payout == null && lineHaul != null && lineHaul > 0) {
+    draft.payout = String(lineHaul + (accessorials || 0));
+    warnings.push('Payout derived from linehaul/accessorials.');
+  }
+
+  const rpmBase = lineHaul ?? payout;
+  if (miles != null && rpmBase != null && miles > 0) {
+    const rpm = rpmBase / miles;
+    if (rpm < 0.5 || rpm > 15) {
+      warnings.push(`Unusual rate-per-mile ($${rpm.toFixed(2)}/mi) for ${miles} miles.`);
+    }
+  }
+
+  const pickups = draft.stops.filter((s) => s.type === 'pickup');
+  const dropoffs = draft.stops.filter((s) => s.type === 'dropoff');
+
+  if (pickups.length === 0) {
+    errors.push('Missing pickup (shipper) location.');
+    confidencePenalty += 0.25;
+  }
+  if (dropoffs.length === 0) {
+    errors.push('Missing dropoff (consignee) location.');
+    confidencePenalty += 0.25;
+  }
+
+  for (const stop of draft.stops) {
+    const addr = (stop.address || '').toLowerCase();
+    if (CORPORATE_KEYWORDS.some((kw) => addr.includes(kw))) {
+      errors.push(`Stop address looks like remit/billing, not a facility: "${stop.address}"`);
+      confidencePenalty += 0.3;
+    }
+  }
+
+  const loadRef = draft.loadRef?.trim();
+  if (!loadRef || loadRef.length < 2) {
+    errors.push('Missing or invalid Load Number.');
+    confidencePenalty += 0.3;
+  }
+
+  const base = typeof draft.confidence === 'number' ? draft.confidence : 0.9;
+  const reconciled = Math.max(0, Math.min(1, base - confidencePenalty));
+
+  return {
+    ...draft,
+    confidence: Math.round(reconciled * 100) / 100,
+    warnings: [...new Set([...warnings, ...errors.map((e) => `Error: ${e}`)])],
+  };
+}
+
 function normalizeType(
   rawType?: string,
   rawText?: string,
@@ -312,42 +460,42 @@ function normalizeType(
   const text = `${rawType || ''} ${rawText || ''} ${fileName || ''}`.toLowerCase();
 
   if (
-    text.includes('proof of delivery') ||
-    text.includes('received by') ||
-    text.includes('consignee signature') ||
-    /\bpod\b/.test(text)
+    text.includes('proof of delivery')
+    || text.includes('received by')
+    || text.includes('consignee signature')
+    || /\bpod\b/.test(text)
   ) {
     return 'proof_of_delivery';
   }
   if (
-    text.includes('rate confirmation') ||
-    text.includes('rate agreement') ||
-    text.includes('carrier pay') ||
-    text.includes('flat rate') ||
-    text.includes('linehaul') ||
-    text.includes('broker')
+    text.includes('rate confirmation')
+    || text.includes('rate agreement')
+    || text.includes('carrier pay')
+    || text.includes('flat rate')
+    || text.includes('linehaul')
+    || text.includes('broker')
   ) {
     return 'rate_confirmation';
   }
   if (
-    text.includes('lading') ||
-    text.includes('bol') ||
-    text.includes('straight bill') ||
-    text.includes('shipper') ||
-    text.includes('consignee') ||
-    text.includes('bill of lading')
+    text.includes('lading')
+    || text.includes('bol')
+    || text.includes('straight bill')
+    || text.includes('shipper')
+    || text.includes('consignee')
+    || text.includes('bill of lading')
   ) {
     return 'bill_of_lading';
   }
   if (
-    text.includes('scale') ||
-    text.includes('cat scale') ||
-    text.includes('gross') ||
-    text.includes('tare') ||
-    text.includes('receipt') ||
-    text.includes('fuel') ||
-    text.includes('lumper') ||
-    text.includes('weight ticket')
+    text.includes('scale')
+    || text.includes('cat scale')
+    || text.includes('gross')
+    || text.includes('tare')
+    || text.includes('receipt')
+    || text.includes('fuel')
+    || text.includes('lumper')
+    || text.includes('weight ticket')
   ) {
     return 'receipt';
   }
@@ -419,6 +567,6 @@ function generateDevMockExtraction(fileName: string): ExtractedDocData {
   return {
     documentType: docType,
     rawText: 'Document uploaded and queued for vision extraction',
-    confidence: 0.80,
+    confidence: 0.8,
   };
 }

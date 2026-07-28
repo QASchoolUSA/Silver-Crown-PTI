@@ -29,9 +29,11 @@ import {
 } from '@silver-crown/shared';
 import StopAddressEditor from '../components/StopAddressEditor';
 import { useAuth } from '../context/AuthContext';
+import { extractRateConGemini } from '../utils/extractRateConGemini';
 import { extractRateConLocal } from '../utils/extractRateConLocal';
 
 type QueueStatus = 'queued' | 'uploading' | 'extracting' | 'ready' | 'error';
+type ExtractSource = 'gemini' | 'pdf_text' | 'ocr';
 
 interface ImportItem {
   id: string;
@@ -41,6 +43,7 @@ interface ImportItem {
   expanded: boolean;
   message?: string;
   draft?: RateConDraft;
+  extractSource?: ExtractSource;
 }
 
 const acceptedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
@@ -147,11 +150,30 @@ export default function ImportLoadsPage() {
         status: 'processing',
       });
 
-      patchItem(item.id, { status: 'extracting', message: 'Reading rate confirmation…' });
-      const { draft: extractedDraft } = await extractRateConLocal(item.file, {
-        documentId,
-        onProgress: (message) => patchItem(item.id, { message }),
-      });
+      patchItem(item.id, { status: 'extracting', message: 'Running Gemini vision…' });
+      let extractedDraft: RateConDraft;
+      let extractSource: ExtractSource = 'gemini';
+
+      try {
+        const geminiResult = await extractRateConGemini(item.file, {
+          documentId,
+          fileUrl,
+          onProgress: (message) => patchItem(item.id, { message }),
+        });
+        extractedDraft = geminiResult.draft;
+        extractSource = 'gemini';
+      } catch (geminiError) {
+        console.warn('Gemini extract failed, falling back to local OCR:', geminiError);
+        patchItem(item.id, {
+          message: 'Gemini unavailable — falling back to on-device OCR…',
+        });
+        const localResult = await extractRateConLocal(item.file, {
+          documentId,
+          onProgress: (message) => patchItem(item.id, { message }),
+        });
+        extractedDraft = localResult.draft;
+        extractSource = localResult.source;
+      }
 
       let draft: RateConDraft = {
         ...extractedDraft,
@@ -168,7 +190,10 @@ export default function ImportLoadsPage() {
             miles: String(route.miles),
             milesSource: 'geoapify',
             stops: route.stops,
-            warnings: [...(draft.warnings || []), 'Miles calculated with Geoapify heavy_truck (loaded semi) routing.'],
+            warnings: [
+              ...(draft.warnings || []),
+              'Miles calculated with Geoapify heavy_truck (loaded semi) routing.',
+            ],
           };
         } catch (error) {
           draft = {
@@ -181,7 +206,13 @@ export default function ImportLoadsPage() {
         }
       }
 
-      patchItem(item.id, { status: 'ready', draft, message: undefined, expanded: true });
+      patchItem(item.id, {
+        status: 'ready',
+        draft,
+        extractSource,
+        message: undefined,
+        expanded: true,
+      });
     } catch (error) {
       patchItem(item.id, {
         status: 'error',
@@ -287,8 +318,8 @@ export default function ImportLoadsPage() {
           IMPORT RATE CONFIRMATIONS
         </h1>
         <p className="text-on-surface-variant mt-2 max-w-2xl">
-          Upload one or many rate cons. Review the stops, rate, broker, and truck miles before
-          creating loads.
+          Upload one or many rate cons. Gemini multimodal vision extracts each file first; on-device
+          OCR is the fallback. Review stops, rate, broker, and truck miles before creating loads.
         </p>
       </header>
 
@@ -445,7 +476,19 @@ function ImportRow({
           <p className="text-on-surface-variant text-xs mt-1">
             {item.message ||
               (draft
-                ? `${draft.broker || 'Broker needed'} · ${draft.loadRef || 'Load # needed'} · ${stopCountLabel} · ${
+                ? `${
+                    item.extractSource === 'gemini'
+                      ? 'Gemini'
+                      : item.extractSource === 'ocr'
+                        ? 'OCR'
+                        : item.extractSource === 'pdf_text'
+                          ? 'PDF text'
+                          : 'Parsed'
+                  }${
+                    typeof draft.confidence === 'number'
+                      ? ` ${Math.round(draft.confidence * 100)}%`
+                      : ''
+                  } · ${draft.broker || 'Broker needed'} · ${draft.loadRef || 'Load # needed'} · ${stopCountLabel} · ${
                     draft.assignedDriverName || 'Unassigned'
                   }`
                 : item.status)}

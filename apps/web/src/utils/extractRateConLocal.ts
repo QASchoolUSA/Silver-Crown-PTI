@@ -1,6 +1,7 @@
 import {
   optimizeDocumentImageForOCR,
   parseRateConfirmation,
+  reconcileRateConDraft,
   updateDocumentExtractedData,
   type ExtractedDocData,
   type RateConDraft,
@@ -145,11 +146,11 @@ export async function extractRateConLocal(
     );
   }
 
-  const draft: RateConDraft = {
+  const draft: RateConDraft = reconcileRateConDraft({
     ...parsed.draft,
     sourceFile: file.name,
     documentId: options.documentId,
-  };
+  });
 
   const extractedData: ExtractedDocData = {
     documentType: 'rate_confirmation',
@@ -164,7 +165,7 @@ export async function extractRateConLocal(
     totalRate: draft.payout ? `$${draft.payout}` : undefined,
     weight: draft.weight,
     rawText: parsed.rawText,
-    confidence: parsed.confidence,
+    confidence: draft.confidence ?? parsed.confidence,
     rateConDraft: draft,
   };
 
