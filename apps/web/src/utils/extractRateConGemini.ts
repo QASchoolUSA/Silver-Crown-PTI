@@ -11,13 +11,20 @@ export interface GeminiRateConExtractResult {
   draft: RateConDraft;
   extractedData: ExtractedDocData;
   source: 'gemini';
+  usage?: {
+    model: string;
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    thoughtsTokenCount?: number;
+    totalTokenCount?: number;
+  };
 }
 
 function stripDataUrl(b64: string): string {
   return b64.replace(/^data:[^;]+;base64,/, '');
 }
 
-async function blobToJpegBase64(blob: Blob, quality = 0.92): Promise<string> {
+async function blobToJpegBase64(blob: Blob, quality = 0.8): Promise<string> {
   if (blob.type === 'image/jpeg') {
     const buf = await blob.arrayBuffer();
     const bytes = new Uint8Array(buf);
@@ -26,7 +33,6 @@ async function blobToJpegBase64(blob: Blob, quality = 0.92): Promise<string> {
     return btoa(binary);
   }
 
-  // Convert PNG/WebP via canvas when possible
   if (typeof document !== 'undefined') {
     const url = URL.createObjectURL(blob);
     try {
@@ -59,6 +65,10 @@ async function blobToJpegBase64(blob: Blob, quality = 0.92): Promise<string> {
   return btoa(binary);
 }
 
+/**
+ * Render page 1 only at moderate DPI to cut Gemini image-token cost.
+ * Rate-con money/stops are almost always on page 1.
+ */
 async function renderPdfPagesToJpegBase64(
   file: File | Blob,
   onProgress?: (message: string) => void
@@ -71,14 +81,14 @@ async function renderPdfPagesToJpegBase64(
 
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data }).promise;
-  const pageLimit = Math.min(doc.numPages, 2);
+  const pageLimit = Math.min(doc.numPages, 1);
   const pages: string[] = [];
 
   for (let i = 1; i <= pageLimit; i++) {
-    onProgress?.(`Rendering page ${i} of ${pageLimit} for Gemini…`);
+    onProgress?.(`Rendering page ${i} for Gemini…`);
     const page = await doc.getPage(i);
-    // ~200 DPI equivalent for letter-size pages
-    const viewport = page.getViewport({ scale: 2 });
+    // ~108–144 DPI equivalent — enough for rate-con print, cheaper than scale 2
+    const viewport = page.getViewport({ scale: 1.5 });
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -86,10 +96,10 @@ async function renderPdfPagesToJpegBase64(
     if (!context) continue;
     await page.render({ canvasContext: context, viewport }).promise;
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', 0.92)
+      canvas.toBlob(resolve, 'image/jpeg', 0.8)
     );
     if (!blob) continue;
-    pages.push(await blobToJpegBase64(blob));
+    pages.push(await blobToJpegBase64(blob, 0.8));
   }
 
   return pages;
@@ -100,13 +110,12 @@ async function imageFileToJpegPages(
   onProgress?: (message: string) => void
 ): Promise<string[]> {
   onProgress?.('Preparing image for Gemini…');
-  const { base64Data } = await optimizeDocumentImageForOCR(file, 2400);
+  const { base64Data } = await optimizeDocumentImageForOCR(file, 1600);
   return [stripDataUrl(base64Data)];
 }
 
 /**
- * Multimodal Gemini extract via Cloud Function.
- * Renders PDF pages (or image) to JPEG and sends pixels to avoid PDF reading-order bugs.
+ * Multimodal Gemini extract via Cloud Function (cost-tuned: 1 page, mid DPI, lite models).
  */
 export async function extractRateConGemini(
   file: File,
@@ -137,6 +146,10 @@ export async function extractRateConGemini(
     base64Pages,
   });
 
+  if (response.usage) {
+    console.info('[extractRateConGemini] usage', response.usage);
+  }
+
   const extracted = response.extractedData;
   let draft = extracted.rateConDraft
     ? reconcileRateConDraft({
@@ -158,5 +171,5 @@ export async function extractRateConGemini(
     confidence: draft.confidence ?? extracted.confidence,
   };
 
-  return { draft, extractedData, source: 'gemini' };
+  return { draft, extractedData, source: 'gemini', usage: response.usage };
 }

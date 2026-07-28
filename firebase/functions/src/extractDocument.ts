@@ -38,6 +38,19 @@ export interface ExtractedDocData {
   rateConDraft?: RateConDraft;
 }
 
+export interface GeminiUsageMetadata {
+  model: string;
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+  totalTokenCount?: number;
+}
+
+interface GeminiExtractResult {
+  extracted: ExtractedDocData;
+  usage?: GeminiUsageMetadata;
+}
+
 interface RateConDraft {
   sourceFile: string;
   loadRef?: string;
@@ -118,9 +131,10 @@ export const extractDocumentData = onCall({ secrets: [geminiApiKey] }, async (re
 
   try {
     let extracted: ExtractedDocData;
+    let usage: GeminiUsageMetadata | undefined;
 
     if (apiKey) {
-      extracted = await callGeminiVisionApi(
+      const result = await callGeminiVisionApi(
         apiKey,
         fileUrl,
         base64Data,
@@ -128,6 +142,8 @@ export const extractDocumentData = onCall({ secrets: [geminiApiKey] }, async (re
         fileType,
         fileName
       );
+      extracted = result.extracted;
+      usage = result.usage;
     } else {
       extracted = generateDevMockExtraction(fileName);
     }
@@ -139,7 +155,7 @@ export const extractDocumentData = onCall({ secrets: [geminiApiKey] }, async (re
       updatedAt: new Date().toISOString(),
     });
 
-    return { success: true, extractedData: extracted };
+    return { success: true, extractedData: extracted, usage };
   } catch (error: unknown) {
     const errMessage = error instanceof Error ? error.message : 'Extraction failed';
     await docRef.update({
@@ -165,11 +181,9 @@ function stripUndefined<T>(value: T): T {
 }
 
 function buildVisionPrompt(): string {
-  return `You are a freight-document extraction engine used by experienced truck dispatchers. Transcribe the document and return factual data only. Never infer printed miles, money, addresses, or stop order.
+  return `You are a freight-document extraction engine. Return factual printed fields only. Never invent miles, money, addresses, or stop order.
 
-Perform a 2-stage analysis of this document image (or multi-page images):
-STAGE 1: Transcribe ALL text on the page(s) into "rawText" (including headers, table cells, stamps, seal numbers, and handwritten notes).
-STAGE 2: Extract structured JSON matching this exact schema:
+Extract structured JSON matching this exact schema (do NOT transcribe the full page into rawText — set rawText to null):
 {
   "documentType": "bill_of_lading" | "rate_confirmation" | "proof_of_delivery" | "receipt" | "other",
   "bolNumber": string or null,
@@ -184,7 +198,7 @@ STAGE 2: Extract structured JSON matching this exact schema:
   "totalRate": string or null,
   "weight": string or null,
   "handwrittenNotes": string or null,
-  "rawText": string,
+  "rawText": null,
   "rateConDraft": {
     "loadRef": string or null,
     "broker": string or null,
@@ -209,25 +223,19 @@ STAGE 2: Extract structured JSON matching this exact schema:
   } or null
 }
 
-Classification Rules:
-1. "bill_of_lading": Contains terms like "Bill of Lading", "BOL", "Straight Bill of Lading", Shipper, Consignee, commodity list, piece counts, trailer/seal #.
-2. "rate_confirmation": Contains "Rate Confirmation", "Confirmation #", "Broker", "Load Agreement", carrier payout/rate ($ amount), linehaul, origin/destination.
-3. "proof_of_delivery": Title or primary purpose is Proof of Delivery / delivery receipt with receiver signature. Mentions of "send POD with invoice" on a rate confirmation do NOT make it a POD.
-4. "receipt": Weight tickets (CAT Scale), Fuel receipts, Lumper receipts, Toll receipts, Maintenance invoices.
+Classification:
+1. rate_confirmation: Rate Confirmation / Load Tender / Line Haul / Flat Rate / carrier pay (even if text mentions sending PODs with invoices).
+2. proof_of_delivery: document title/purpose is Proof of Delivery with receiver signature — not rate cons that mention POD for billing.
+3. bill_of_lading: Bill of Lading / BOL as primary document.
+4. receipt: scale/fuel/lumper tickets.
 
-Rate Confirmation / VLM Field Rules:
-- Priority 1 / Carrier Load Tender / Line Haul / Flat Rate documents are rate_confirmation even when they mention PODs for invoicing.
-- Ignore remit-to, corporate office, billing office, factoring, and P.O. Box addresses. Only extract actual pickup (shipper) and dropoff (consignee) stop streets.
-- For each stop address, use ONLY street + city + state + ZIP. Do NOT include shed name, facility name, warehouse nickname, company name on the dock, or "Shed:…" labels. Integrity Express lines like "Shed:GO FAST Address: 153 WINYAH RD CONWAY, SC 29526" must become "153 WINYAH RD, CONWAY, SC 29526".
-- Include every pickup and delivery in the printed operational order. Preserve multiple pickups and multiple dropoffs. Do not collapse them into one origin and destination.
-- "payout" is the total carrier gross/flat rate. "lineHaul" excludes fuel surcharge and accessorials. "accessorials" is their total; explain components (FSC, detention, lumper, tarp, stop-off, etc.) in "accessorialDetail".
-- "loadRef" is the broker load/order/confirmation number used to identify the load.
-- "broker" is the broker/logistics company issuing the confirmation, not the carrier.
-- Set "miles" only when mileage is explicitly printed. Never calculate or estimate it.
-- A CamScanner file may still be a valid rate confirmation; classify from document content. Proofs of delivery, signed BOLs, receipts, and unrelated scans must have rateConDraft null.
-- Put a warning in rateConDraft.warnings for an incomplete address, unclear total, ambiguous broker, or low-confidence stop ordering.
-- "handwrittenNotes": Extract ONLY actual handwritten driver/receiver handwriting, signatures, stamped text, or modified numbers. If no handwriting is visible, set to null.
-- Return ONLY raw valid JSON.`;
+Rate-con rules:
+- Street + city + state + ZIP only for stops. Integrity Express "Shed:GO FAST Address: 153 WINYAH RD CONWAY, SC 29526" → "153 WINYAH RD, CONWAY, SC 29526".
+- Ignore remit-to / billing / P.O. Box addresses.
+- Keep every pickup and dropoff in printed order.
+- miles only if printed; never estimate.
+- rateConDraft null for POD/BOL/receipt/other.
+- Return ONLY valid JSON.`;
 }
 
 async function callGeminiVisionApi(
@@ -237,7 +245,7 @@ async function callGeminiVisionApi(
   base64Pages?: string[],
   mimeType: string = 'image/jpeg',
   fileName?: string
-): Promise<ExtractedDocData> {
+): Promise<GeminiExtractResult> {
   const pages: Array<{ mime: string; data: string }> = [];
 
   if (base64Pages?.length) {
@@ -280,23 +288,31 @@ async function callGeminiVisionApi(
     },
   }));
 
-  const payload = {
-    contents: [
-      {
-        parts: [{ text: buildVisionPrompt() }, ...imageParts],
-      },
-    ],
-    generationConfig: {
-      temperature: 0.1,
-      response_mime_type: 'application/json',
-    },
-  };
-
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+  // Cheapest capable models first; 2.5-flash last (thinking disabled when used).
+  const modelsToTry = ['gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.5-flash'];
   let lastError: Error | null = null;
 
   for (const modelName of modelsToTry) {
     try {
+      const generationConfig: Record<string, unknown> = {
+        temperature: 0.1,
+        response_mime_type: 'application/json',
+        maxOutputTokens: 2048,
+      };
+      // Disable thinking on 2.5 Flash family (default thinking is the main cost driver).
+      if (modelName.includes('2.5-flash')) {
+        generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      }
+
+      const payload = {
+        contents: [
+          {
+            parts: [{ text: buildVisionPrompt() }, ...imageParts],
+          },
+        ],
+        generationConfig,
+      };
+
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -312,6 +328,18 @@ async function callGeminiVisionApi(
       }
 
       const result = await response.json();
+      const usageMeta = result?.usageMetadata || {};
+      const usage: GeminiUsageMetadata = {
+        model: modelName,
+        promptTokenCount: usageMeta.promptTokenCount,
+        candidatesTokenCount: usageMeta.candidatesTokenCount,
+        thoughtsTokenCount: usageMeta.thoughtsTokenCount ?? usageMeta.totalThoughtTokens,
+        totalTokenCount: usageMeta.totalTokenCount,
+      };
+      console.info(
+        `[extractDocumentData] Gemini usage model=${usage.model} prompt=${usage.promptTokenCount ?? '?'} candidates=${usage.candidatesTokenCount ?? '?'} thoughts=${usage.thoughtsTokenCount ?? 0} total=${usage.totalTokenCount ?? '?'}`
+      );
+
       const textOutput = result?.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!textOutput) {
@@ -321,16 +349,27 @@ async function callGeminiVisionApi(
       const cleanedText = textOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
       const jsonParsed = JSON.parse(cleanedText);
 
-      const rawBody = jsonParsed.rawText || cleanedText;
+      // Prefer structured fields; avoid huge rawText dumps (cost + storage).
+      const rawBody =
+        typeof jsonParsed.rawText === 'string' && jsonParsed.rawText.trim().length > 0
+          ? jsonParsed.rawText.slice(0, 500)
+          : [
+              jsonParsed.documentType,
+              jsonParsed.rateConfirmationNumber,
+              jsonParsed.bolNumber,
+              jsonParsed.totalRate,
+              jsonParsed.originAddress,
+              jsonParsed.destinationAddress,
+              fileName,
+            ]
+              .filter(Boolean)
+              .join(' ');
+
       const normDocType = normalizeType(jsonParsed.documentType, rawBody, fileName);
-      const regexBol = rawBody.match(/(?:BOL|B\/L|Bill\s*of\s*Lading|Order|Ref)\s*[:#\s]*([A-Z0-9-]{4,25})/i);
-      const regexRateConf = rawBody.match(/(?:Rate\s*Conf|Confirmation|Load|Agmt)\s*[:#\s]*([A-Z0-9-]{4,20})/i);
-      const regexWeight = rawBody.match(/(?:Gross|Net|Weight|Total\s*Wt)\s*[:#\s]*([0-9,]{4,7}\s*(?:lbs|lb)?)/i);
-      const regexRate = rawBody.match(/(?:Total\s*Rate|Total\s*Pay|Linehaul|Amount)\s*[:#\s]*(\$\s*[0-9,]+(?:\.[0-9]{2})?)/i);
       let parsedDraft = normDocType === 'rate_confirmation'
         ? normalizeRateConDraft(jsonParsed.rateConDraft, fileName, {
-            loadRef: jsonParsed.rateConfirmationNumber || regexRateConf?.[1]?.trim(),
-            payout: jsonParsed.totalRate || regexRate?.[1]?.trim(),
+            loadRef: jsonParsed.rateConfirmationNumber,
+            payout: jsonParsed.totalRate,
             originAddress: jsonParsed.originAddress,
             destinationAddress: jsonParsed.destinationAddress,
             pickupDate: jsonParsed.pickupDate,
@@ -343,22 +382,25 @@ async function callGeminiVisionApi(
       }
 
       return {
-        documentType: normDocType,
-        bolNumber: jsonParsed.bolNumber || regexBol?.[1]?.trim() || undefined,
-        rateConfirmationNumber: jsonParsed.rateConfirmationNumber || regexRateConf?.[1]?.trim() || undefined,
-        carrierName: jsonParsed.carrierName || undefined,
-        shipperName: jsonParsed.shipperName || undefined,
-        consigneeName: jsonParsed.consigneeName || undefined,
-        originAddress: jsonParsed.originAddress || undefined,
-        destinationAddress: jsonParsed.destinationAddress || undefined,
-        pickupDate: jsonParsed.pickupDate || undefined,
-        deliveryDate: jsonParsed.deliveryDate || undefined,
-        totalRate: jsonParsed.totalRate || regexRate?.[1]?.trim() || undefined,
-        weight: jsonParsed.weight || regexWeight?.[1]?.trim() || undefined,
-        handwrittenNotes: jsonParsed.handwrittenNotes || undefined,
-        rawText: rawBody,
-        confidence: parsedDraft?.confidence ?? 0.98,
-        rateConDraft: parsedDraft,
+        extracted: {
+          documentType: normDocType,
+          bolNumber: jsonParsed.bolNumber || undefined,
+          rateConfirmationNumber: jsonParsed.rateConfirmationNumber || undefined,
+          carrierName: jsonParsed.carrierName || undefined,
+          shipperName: jsonParsed.shipperName || undefined,
+          consigneeName: jsonParsed.consigneeName || undefined,
+          originAddress: jsonParsed.originAddress || undefined,
+          destinationAddress: jsonParsed.destinationAddress || undefined,
+          pickupDate: jsonParsed.pickupDate || undefined,
+          deliveryDate: jsonParsed.deliveryDate || undefined,
+          totalRate: jsonParsed.totalRate || undefined,
+          weight: jsonParsed.weight || undefined,
+          handwrittenNotes: jsonParsed.handwrittenNotes || undefined,
+          rawText: undefined,
+          confidence: parsedDraft?.confidence ?? 0.95,
+          rateConDraft: parsedDraft,
+        },
+        usage,
       };
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));

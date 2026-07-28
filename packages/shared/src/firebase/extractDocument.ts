@@ -13,9 +13,18 @@ export interface ExtractDocumentDataRequest {
   apiKey?: string;
 }
 
+export interface GeminiUsageMetadata {
+  model: string;
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
+  totalTokenCount?: number;
+}
+
 export interface ExtractDocumentDataResponse {
   success: boolean;
   extractedData: ExtractedDocData;
+  usage?: GeminiUsageMetadata;
 }
 
 export async function extractDocumentData(
