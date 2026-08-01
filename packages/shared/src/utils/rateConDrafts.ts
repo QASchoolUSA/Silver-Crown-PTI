@@ -6,13 +6,20 @@ export interface RateConDraftValidation {
   errors: string[];
 }
 
-function hasUsableCoords(stop: RateConStop): stop is RateConStop & { coords: NonNullable<RateConStop['coords']> } {
+export function hasUsableCoords(
+  stop: RateConStop
+): stop is RateConStop & { coords: NonNullable<RateConStop['coords']> } {
   return Boolean(
     stop.coords
       && Number.isFinite(stop.coords.latitude)
       && Number.isFinite(stop.coords.longitude)
       && (stop.coords.latitude !== 0 || stop.coords.longitude !== 0)
   );
+}
+
+export function hasUsableMiles(draft: Pick<RateConDraft, 'miles'>): boolean {
+  const miles = Number.parseFloat((draft.miles || '').replace(/[,]/g, ''));
+  return Number.isFinite(miles) && miles > 0;
 }
 
 export function validateRateConDraft(draft: RateConDraft): RateConDraftValidation {
@@ -24,7 +31,6 @@ export function validateRateConDraft(draft: RateConDraft): RateConDraftValidatio
   if (pickups.length === 0) errors.push('At least one pickup is required.');
   if (dropoffs.length === 0) errors.push('At least one dropoff is required.');
   if (draft.stops.some((stop) => !stop.address.trim())) errors.push('Every stop needs an address.');
-  if (draft.stops.some((stop) => !hasUsableCoords(stop))) errors.push('Every stop must be geocoded.');
   if (!Number.isFinite(payout) || payout <= 0) {
     errors.push('Gross pay must be greater than zero.');
   }
@@ -39,6 +45,9 @@ export function rateConDraftToCreateLoadInput(
 ): CreateLoadInput {
   const validation = validateRateConDraft(draft);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
+  if (draft.stops.some((stop) => !hasUsableCoords(stop))) {
+    throw new Error('Every stop must be geocoded before creating the load.');
+  }
 
   const stops: LoadStop[] = draft.stops.map((stop) => ({
     type: stop.type,

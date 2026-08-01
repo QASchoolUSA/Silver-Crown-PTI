@@ -1,4 +1,5 @@
 import {
+  hasUsableMiles,
   isLikelyPodFile,
   rateConDraftToCreateLoadInput,
   validateRateConDraft,
@@ -33,13 +34,33 @@ describe('rateConDrafts', () => {
     expect(validateRateConDraft(draft)).toEqual({ valid: true, errors: [] });
   });
 
-  it('requires geocoded pickup and dropoff stops', () => {
-    const invalid = { ...draft, stops: [{ ...draft.stops[0], coords: undefined }] };
+  it('allows text-only stops without coords', () => {
+    const textOnly: RateConDraft = {
+      ...draft,
+      stops: [
+        { type: 'pickup', address: 'Chicago, IL', sequence: 0 },
+        { type: 'dropoff', address: 'Dallas, TX', sequence: 0 },
+      ],
+    };
+    expect(validateRateConDraft(textOnly)).toEqual({ valid: true, errors: [] });
+  });
+
+  it('still requires address text on every stop', () => {
+    const invalid = {
+      ...draft,
+      stops: [{ ...draft.stops[0], address: '  ' }, draft.stops[1]],
+    };
     expect(validateRateConDraft(invalid).valid).toBe(false);
   });
 
   it('rejects a non-numeric gross rate', () => {
     expect(validateRateConDraft({ ...draft, payout: 'pending' }).valid).toBe(false);
+  });
+
+  it('detects usable miles', () => {
+    expect(hasUsableMiles(draft)).toBe(true);
+    expect(hasUsableMiles({ miles: undefined })).toBe(false);
+    expect(hasUsableMiles({ miles: '0' })).toBe(false);
   });
 
   it('maps a reviewed draft to create-load input', () => {
@@ -48,6 +69,18 @@ describe('rateConDrafts', () => {
     expect(input.assignedDriverId).toBeNull();
     expect(input.stops).toHaveLength(2);
     expect(input.loadRef).toBe('LD-123');
+  });
+
+  it('refuses create-load input when coords are missing', () => {
+    expect(() =>
+      rateConDraftToCreateLoadInput('company-1', {
+        ...draft,
+        stops: [
+          { type: 'pickup', address: 'Chicago, IL', sequence: 0 },
+          { type: 'dropoff', address: 'Dallas, TX', sequence: 0 },
+        ],
+      })
+    ).toThrow(/geocoded/i);
   });
 
   it('carries an assigned driver into create-load input', () => {

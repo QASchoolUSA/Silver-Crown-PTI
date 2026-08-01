@@ -11,17 +11,14 @@ import {
   X,
 } from 'lucide-react';
 import {
-  calculateRateConRouteMiles,
-  createStopDraftFromStop,
-  draftsToStops,
+  resolveRateConDraftForCreate,
   validateRateConDraft,
   type AppUser,
   type RateConDraft,
   type RateConStop,
-  type StopDraft,
 } from '@silver-crown/shared';
 import PdfHighlightViewer, { type SelectionResult } from './PdfHighlightViewer';
-import StopAddressEditor from './StopAddressEditor';
+import StopAddressTextFields from './StopAddressTextFields';
 import {
   MANUAL_CAPTURE_STEPS,
   buildDraftFromManualCaptures,
@@ -47,16 +44,12 @@ interface ManualRateConWizardProps {
   onComplete: (draft: RateConDraft, highlights: PageHighlightRect[]) => void;
 }
 
-function stopDrafts(stops: RateConStop[], type: RateConStop['type']): StopDraft[] {
+function stopAddresses(stops: RateConStop[], type: RateConStop['type']): string[] {
   const filtered = stops
     .filter((stop) => stop.type === type)
-    .sort((a, b) => a.sequence - b.sequence);
-  if (filtered.length === 0) return [{ query: '', stop: null }];
-  return filtered.map((stop) =>
-    stop.coords
-      ? createStopDraftFromStop({ ...stop, coords: stop.coords })
-      : { query: stop.address, stop: null }
-  );
+    .sort((a, b) => a.sequence - b.sequence)
+    .map((stop) => stop.address);
+  return filtered.length > 0 ? filtered : [''];
 }
 
 function Field({
@@ -238,39 +231,37 @@ export default function ManualRateConWizard({
     setDraft((current) => (current ? { ...current, ...patch } : current));
   };
 
-  const updateStops = (pickups: StopDraft[], dropoffsList: StopDraft[]) => {
+  const updateStops = (pickups: string[], dropoffsList: string[]) => {
     if (!draft) return;
-    const completeStops = draftsToStops(pickups, dropoffsList);
-    if (completeStops) {
-      updateDraft({ stops: completeStops, milesSource: 'manual' });
-      return;
-    }
     const partial: RateConStop[] = [
-      ...pickups.map((entry, sequence) => ({
+      ...pickups.map((address, sequence) => ({
         type: 'pickup' as const,
-        address: entry.query,
-        coords: entry.stop?.coords,
+        address,
         sequence,
       })),
-      ...dropoffsList.map((entry, sequence) => ({
+      ...dropoffsList.map((address, sequence) => ({
         type: 'dropoff' as const,
-        address: entry.query,
-        coords: entry.stop?.coords,
+        address,
         sequence,
       })),
     ];
-    updateDraft({ stops: partial, milesSource: 'manual' });
+    updateDraft({ stops: partial, milesSource: draft.milesSource });
   };
 
   const recalculateMiles = async () => {
     if (!draft) return;
     setCalculatingMiles(true);
     try {
-      const route = await calculateRateConRouteMiles(draft.stops);
+      const resolved = await resolveRateConDraftForCreate({
+        ...draft,
+        miles: undefined,
+        milesSource: undefined,
+      });
       updateDraft({
-        miles: String(route.miles),
-        milesSource: 'geoapify',
-        stops: route.stops,
+        miles: resolved.miles,
+        milesSource: resolved.milesSource,
+        stops: resolved.stops,
+        warnings: resolved.warnings,
       });
     } catch (error) {
       updateDraft({
@@ -285,8 +276,8 @@ export default function ManualRateConWizard({
   };
 
   const validation = draft ? validateRateConDraft(draft) : null;
-  const pickupDrafts = draft ? stopDrafts(draft.stops, 'pickup') : [];
-  const dropoffDrafts = draft ? stopDrafts(draft.stops, 'dropoff') : [];
+  const pickupAddresses = draft ? stopAddresses(draft.stops, 'pickup') : [''];
+  const dropoffAddresses = draft ? stopAddresses(draft.stops, 'dropoff') : [''];
 
   const canContinueCapture = isDropoffStep
     ? Boolean(pendingText.trim()) || captures.dropoffs.length > 0
@@ -543,14 +534,14 @@ export default function ManualRateConWizard({
                   ) : (
                     <Route size={15} />
                   )}
-                  Recalculate semi truck miles
+                  Preview truck miles
                 </button>
               </div>
-              <StopAddressEditor
-                pickups={pickupDrafts}
-                dropoffs={dropoffDrafts}
-                onPickupsChange={(next) => updateStops(next, dropoffDrafts)}
-                onDropoffsChange={(next) => updateStops(pickupDrafts, next)}
+              <StopAddressTextFields
+                pickups={pickupAddresses}
+                dropoffs={dropoffAddresses}
+                onPickupsChange={(next) => updateStops(next, dropoffAddresses)}
+                onDropoffsChange={(next) => updateStops(pickupAddresses, next)}
               />
 
               {(draft.warnings?.length || !validation?.valid) && (

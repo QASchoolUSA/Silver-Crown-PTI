@@ -16,20 +16,18 @@ import {
   calculateRateConRouteMiles,
   createDocumentRecord,
   createLoadsFromDrafts,
-  createStopDraftFromStop,
-  draftsToStops,
   getCompanyDrivers,
   isLikelyPodFile,
+  resolveRateConDraftForCreate,
   uploadDocumentFile,
   validateRateConDraft,
   type AppUser,
   type RateConDraft,
   type RateConStop,
-  type StopDraft,
 } from '@silver-crown/shared';
 import ManualRateConWizard from '../components/ManualRateConWizard';
 import PdfHighlightViewer from '../components/PdfHighlightViewer';
-import StopAddressEditor from '../components/StopAddressEditor';
+import StopAddressTextFields from '../components/StopAddressTextFields';
 import { useAuth } from '../context/AuthContext';
 import { extractRateConGemini } from '../utils/extractRateConGemini';
 import { extractRateConLocal } from '../utils/extractRateConLocal';
@@ -55,16 +53,12 @@ interface ImportItem {
 
 const acceptedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
-function stopDrafts(stops: RateConStop[], type: RateConStop['type']): StopDraft[] {
+function stopAddresses(stops: RateConStop[], type: RateConStop['type']): string[] {
   const filtered = stops
     .filter((stop) => stop.type === type)
-    .sort((a, b) => a.sequence - b.sequence);
-  if (filtered.length === 0) return [{ query: '', stop: null }];
-  return filtered.map((stop) =>
-    stop.coords
-      ? createStopDraftFromStop({ ...stop, coords: stop.coords })
-      : { query: stop.address, stop: null }
-  );
+    .sort((a, b) => a.sequence - b.sequence)
+    .map((stop) => stop.address);
+  return filtered.length > 0 ? filtered : [''];
 }
 
 function extractSourceLabel(source?: ExtractSource): string {
@@ -318,48 +312,58 @@ export default function ImportLoadsPage() {
 
   const updateStops = (
     item: ImportItem,
-    pickups: StopDraft[],
-    dropoffs: StopDraft[]
+    pickups: string[],
+    dropoffs: string[]
   ) => {
     if (!item.draft) return;
-    const completeStops = draftsToStops(pickups, dropoffs);
-    if (completeStops) {
-      updateDraft(item.id, { stops: completeStops, milesSource: 'manual' });
-      return;
-    }
     const partial: RateConStop[] = [
-      ...pickups.map((entry, sequence) => ({
+      ...pickups.map((address, sequence) => ({
         type: 'pickup' as const,
-        address: entry.query,
-        coords: entry.stop?.coords,
+        address,
         sequence,
       })),
-      ...dropoffs.map((entry, sequence) => ({
+      ...dropoffs.map((address, sequence) => ({
         type: 'dropoff' as const,
-        address: entry.query,
-        coords: entry.stop?.coords,
+        address,
         sequence,
       })),
     ];
-    updateDraft(item.id, { stops: partial, milesSource: 'manual' });
+    updateDraft(item.id, { stops: partial, milesSource: item.draft.milesSource });
   };
 
   const recalculateMiles = async (item: ImportItem) => {
     if (!item.draft) return;
-    patchItem(item.id, { status: 'extracting', message: 'Recalculating truck route…' });
+    patchItem(item.id, { status: 'extracting', message: 'Geocoding stops & recalculating miles…' });
     try {
-      const route = await calculateRateConRouteMiles(item.draft.stops);
+      // Force miles refresh: clear miles so resolve recalculates via Geoapify after Mapbox.
+      const resolved = await resolveRateConDraftForCreate({
+        ...item.draft,
+        miles: undefined,
+        milesSource: undefined,
+      });
       updateDraft(item.id, {
-        miles: String(route.miles),
-        milesSource: 'geoapify',
-        stops: route.stops,
+        miles: resolved.miles,
+        milesSource: resolved.milesSource,
+        stops: resolved.stops,
+        warnings: resolved.warnings,
       });
       patchItem(item.id, { status: 'ready', message: undefined });
     } catch (error) {
-      patchItem(item.id, {
-        status: 'ready',
-        message: error instanceof Error ? error.message : 'Route calculation failed.',
-      });
+      // Fallback: try route callable if stops already have coords
+      try {
+        const route = await calculateRateConRouteMiles(item.draft.stops);
+        updateDraft(item.id, {
+          miles: String(route.miles),
+          milesSource: 'geoapify',
+          stops: route.stops,
+        });
+        patchItem(item.id, { status: 'ready', message: undefined });
+      } catch {
+        patchItem(item.id, {
+          status: 'ready',
+          message: error instanceof Error ? error.message : 'Route calculation failed.',
+        });
+      }
     }
   };
 
@@ -632,15 +636,17 @@ function ImportRow({
   drivers: AppUser[];
   patchItem: (id: string, patch: Partial<ImportItem>) => void;
   updateDraft: (id: string, patch: Partial<RateConDraft>) => void;
-  updateStops: (item: ImportItem, pickups: StopDraft[], dropoffs: StopDraft[]) => void;
+  updateStops: (item: ImportItem, pickups: string[], dropoffs: string[]) => void;
   recalculateMiles: (item: ImportItem) => Promise<void>;
 }) {
   const draft = item.draft;
   const validation = draft ? validateRateConDraft(draft) : null;
-  const pickups = draft ? stopDrafts(draft.stops, 'pickup') : [];
-  const dropoffs = draft ? stopDrafts(draft.stops, 'dropoff') : [];
+  const pickups = draft ? stopAddresses(draft.stops, 'pickup') : [''];
+  const dropoffs = draft ? stopAddresses(draft.stops, 'dropoff') : [''];
   const stopCountLabel =
-    dropoffs.length === 1 ? '1 stop' : `${dropoffs.length} stops`;
+    dropoffs.filter((a) => a.trim()).length === 1
+      ? '1 stop'
+      : `${dropoffs.filter((a) => a.trim()).length} stops`;
   const statusIcon = item.status === 'ready'
     ? validation?.valid
       ? <CheckCircle2 className="text-primary" size={18} />
@@ -776,10 +782,10 @@ function ImportRow({
                   onClick={() => recalculateMiles(item)}
                   className="flex items-center gap-2 text-primary text-xs font-bold uppercase tracking-wider"
                 >
-                  <Route size={15} /> Recalculate semi truck miles
+                  <Route size={15} /> Preview truck miles
                 </button>
               </div>
-              <StopAddressEditor
+              <StopAddressTextFields
                 pickups={pickups}
                 dropoffs={dropoffs}
                 onPickupsChange={(next) => updateStops(item, next, dropoffs)}
