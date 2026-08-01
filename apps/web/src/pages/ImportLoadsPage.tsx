@@ -27,13 +27,17 @@ import {
   type RateConStop,
   type StopDraft,
 } from '@silver-crown/shared';
+import ManualRateConWizard from '../components/ManualRateConWizard';
+import PdfHighlightViewer from '../components/PdfHighlightViewer';
 import StopAddressEditor from '../components/StopAddressEditor';
 import { useAuth } from '../context/AuthContext';
 import { extractRateConGemini } from '../utils/extractRateConGemini';
 import { extractRateConLocal } from '../utils/extractRateConLocal';
+import type { PageHighlightRect } from '../utils/manualRateConCapture';
 
 type QueueStatus = 'queued' | 'uploading' | 'extracting' | 'ready' | 'error';
-type ExtractSource = 'gemini' | 'pdf_text' | 'ocr';
+type ExtractSource = 'gemini' | 'pdf_text' | 'ocr' | 'manual';
+type ImportMode = 'auto' | 'manual';
 
 interface ImportItem {
   id: string;
@@ -44,6 +48,9 @@ interface ImportItem {
   message?: string;
   draft?: RateConDraft;
   extractSource?: ExtractSource;
+  documentId?: string;
+  highlights?: PageHighlightRect[];
+  showPdf?: boolean;
 }
 
 const acceptedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
@@ -60,6 +67,14 @@ function stopDrafts(stops: RateConStop[], type: RateConStop['type']): StopDraft[
   );
 }
 
+function extractSourceLabel(source?: ExtractSource): string {
+  if (source === 'gemini') return 'Gemini';
+  if (source === 'ocr') return 'OCR';
+  if (source === 'pdf_text') return 'PDF text';
+  if (source === 'manual') return 'Manual';
+  return 'Parsed';
+}
+
 export default function ImportLoadsPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -71,6 +86,8 @@ export default function ImportLoadsPage() {
   const [processing, setProcessing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState('');
+  const [importMode, setImportMode] = useState<ImportMode>('auto');
+  const [wizardItemId, setWizardItemId] = useState<string | null>(null);
 
   // Read inside async queue work so a mid-run change still applies.
   const batchDriverRef = useRef('');
@@ -99,6 +116,59 @@ export default function ImportLoadsPage() {
     );
   };
 
+  const uploadForManual = async (item: ImportItem) => {
+    if (!profile?.companyId || !profile.uid) return;
+    try {
+      patchItem(item.id, { status: 'uploading', message: 'Uploading secure copy…' });
+      const storageKey = `ratecon_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const fileUrl = await uploadDocumentFile(
+        profile.companyId,
+        storageKey,
+        item.file,
+        item.file.name
+      );
+      const documentId = await createDocumentRecord({
+        companyId: profile.companyId,
+        uploadedBy: profile.uid,
+        uploaderName: profile.displayName || 'Admin',
+        fileName: item.file.name,
+        fileUrl,
+        fileType: item.file.type || 'application/pdf',
+        docType: 'rate_confirmation',
+        status: 'processing',
+      });
+      patchItem(item.id, {
+        status: 'extracting',
+        documentId,
+        message: 'Highlight fields on the PDF…',
+      });
+    } catch (error) {
+      patchItem(item.id, {
+        status: 'error',
+        selected: false,
+        message: error instanceof Error ? error.message : 'Upload failed.',
+      });
+      setWizardItemId((current) => (current === item.id ? null : current));
+    }
+  };
+
+  const openNextManualWizard = (list: ImportItem[]) => {
+    const next = list.find(
+      (item) =>
+        item.status === 'queued' ||
+        item.status === 'error' ||
+        (item.status === 'extracting' && !item.draft)
+    );
+    if (!next) {
+      setWizardItemId(null);
+      return;
+    }
+    setWizardItemId(next.id);
+    if (next.status === 'queued' || next.status === 'error' || !next.documentId) {
+      void uploadForManual(next);
+    }
+  };
+
   const addFiles = (files: File[]) => {
     const next: ImportItem[] = [];
     const rejected: string[] = [];
@@ -123,7 +193,11 @@ export default function ImportLoadsPage() {
 
     setItems((current) => {
       const existing = new Set(current.map((item) => item.id));
-      return [...current, ...next.filter((item) => !existing.has(item.id))];
+      const merged = [...current, ...next.filter((item) => !existing.has(item.id))];
+      if (importMode === 'manual' && !wizardItemId) {
+        queueMicrotask(() => openNextManualWizard(merged));
+      }
+      return merged;
     });
     setNotice(rejected.join(' · '));
   };
@@ -150,7 +224,7 @@ export default function ImportLoadsPage() {
         status: 'processing',
       });
 
-      patchItem(item.id, { status: 'extracting', message: 'Running Gemini vision…' });
+      patchItem(item.id, { status: 'extracting', message: 'Running Gemini vision…', documentId });
       let extractedDraft: RateConDraft;
       let extractSource: ExtractSource = 'gemini';
 
@@ -230,6 +304,10 @@ export default function ImportLoadsPage() {
     setProcessing(false);
   };
 
+  const startManualForQueued = () => {
+    openNextManualWizard(items);
+  };
+
   const updateDraft = (id: string, patch: Partial<RateConDraft>) => {
     setItems((current) =>
       current.map((item) =>
@@ -304,9 +382,66 @@ export default function ImportLoadsPage() {
     navigate('/loads', { state: { importCount: result.created.length } });
   };
 
+  const handleManualComplete = (draft: RateConDraft, highlights: PageHighlightRect[]) => {
+    if (!wizardItemId) return;
+    const item = items.find((entry) => entry.id === wizardItemId);
+    const documentId = item?.documentId;
+    const finalDraft: RateConDraft = {
+      ...draft,
+      documentId: draft.documentId || documentId,
+      sourceFile: draft.sourceFile || item?.file.name || draft.sourceFile,
+      ...driverAssignment(batchDriverRef.current),
+      assignedDriverId: draft.assignedDriverId ?? driverAssignment(batchDriverRef.current).assignedDriverId,
+      assignedDriverName:
+        draft.assignedDriverName || driverAssignment(batchDriverRef.current).assignedDriverName,
+    };
+
+    setItems((current) => {
+      const updated = current.map((entry) =>
+        entry.id === wizardItemId
+          ? {
+              ...entry,
+              status: 'ready' as const,
+              draft: finalDraft,
+              extractSource: 'manual' as const,
+              highlights,
+              message: undefined,
+              expanded: true,
+              showPdf: true,
+              selected: true,
+            }
+          : entry
+      );
+      queueMicrotask(() => {
+        const remaining = updated.filter(
+          (entry) => entry.status === 'queued' || (entry.status === 'extracting' && !entry.draft)
+        );
+        if (remaining.length) {
+          openNextManualWizard(updated);
+        } else {
+          setWizardItemId(null);
+        }
+      });
+      return updated;
+    });
+  };
+
+  const handleManualCancel = () => {
+    if (wizardItemId) {
+      patchItem(wizardItemId, {
+        status: 'error',
+        selected: false,
+        message: 'Manual select cancelled.',
+      });
+    }
+    setWizardItemId(null);
+  };
+
   const readySelected = items.filter(
     (item) => item.selected && item.draft && validateRateConDraft(item.draft).valid
   ).length;
+
+  const wizardItem = wizardItemId ? items.find((item) => item.id === wizardItemId) : null;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -318,10 +453,36 @@ export default function ImportLoadsPage() {
           IMPORT RATE CONFIRMATIONS
         </h1>
         <p className="text-on-surface-variant mt-2 max-w-2xl">
-          Upload one or many rate cons. Gemini multimodal vision extracts each file first; on-device
-          OCR is the fallback. Review stops, rate, broker, and truck miles before creating loads.
+          {importMode === 'auto'
+            ? 'Upload one or many rate cons. Gemini multimodal vision extracts each file first; on-device OCR is the fallback. Review stops, rate, broker, and truck miles before creating loads.'
+            : 'Upload a rate con, then highlight Broker, Load ID, Pickup, Dropoffs, and Gross Pay on the PDF. Preview with the document still visible before creating loads.'}
         </p>
       </header>
+
+      <div className="mb-6 inline-flex border border-outline-variant">
+        <button
+          type="button"
+          onClick={() => setImportMode('auto')}
+          className={`px-4 py-2 text-sm font-bold uppercase tracking-wider ${
+            importMode === 'auto'
+              ? 'bg-primary text-on-primary'
+              : 'bg-surface-container-low text-on-surface-variant'
+          }`}
+        >
+          Auto extract
+        </button>
+        <button
+          type="button"
+          onClick={() => setImportMode('manual')}
+          className={`px-4 py-2 text-sm font-bold uppercase tracking-wider ${
+            importMode === 'manual'
+              ? 'bg-primary text-on-primary'
+              : 'bg-surface-container-low text-on-surface-variant'
+          }`}
+        >
+          Manual select
+        </button>
+      </div>
 
       <section
         onDragOver={(event) => {
@@ -341,7 +502,9 @@ export default function ImportLoadsPage() {
         <UploadCloud className="mx-auto text-primary mb-3" size={32} />
         <h2 className="font-semibold">Drop rate confirmation PDFs or images here</h2>
         <p className="text-on-surface-variant text-sm mt-1 mb-5">
-          Select an entire batch; duplicate files and likely PODs are filtered.
+          {importMode === 'manual'
+            ? 'Files open one at a time in the highlight wizard. Duplicate files and likely PODs are filtered.'
+            : 'Select an entire batch; duplicate files and likely PODs are filtered.'}
         </p>
         <button
           type="button"
@@ -391,14 +554,30 @@ export default function ImportLoadsPage() {
                   ))}
                 </select>
               </label>
-              <button
-                type="button"
-                disabled={processing || !items.some((item) => item.status === 'queued' || item.status === 'error')}
-                onClick={processQueue}
-                className="border border-primary text-primary px-4 py-2 text-sm font-bold uppercase tracking-wider disabled:opacity-40"
-              >
-                {processing ? 'Extracting…' : 'Extract batch'}
-              </button>
+              {importMode === 'auto' ? (
+                <button
+                  type="button"
+                  disabled={
+                    processing || !items.some((item) => item.status === 'queued' || item.status === 'error')
+                  }
+                  onClick={processQueue}
+                  className="border border-primary text-primary px-4 py-2 text-sm font-bold uppercase tracking-wider disabled:opacity-40"
+                >
+                  {processing ? 'Extracting…' : 'Extract batch'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={
+                    Boolean(wizardItemId) ||
+                    !items.some((item) => item.status === 'queued' || item.status === 'error')
+                  }
+                  onClick={startManualForQueued}
+                  className="border border-primary text-primary px-4 py-2 text-sm font-bold uppercase tracking-wider disabled:opacity-40"
+                >
+                  Start manual select
+                </button>
+              )}
               <button
                 type="button"
                 disabled={creating || readySelected === 0}
@@ -424,6 +603,18 @@ export default function ImportLoadsPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {wizardItem && (
+        <ManualRateConWizard
+          file={wizardItem.file}
+          documentId={wizardItem.documentId}
+          drivers={drivers}
+          initialDriverId={batchDriverId}
+          uploading={wizardItem.status === 'uploading' || !wizardItem.documentId}
+          onCancel={handleManualCancel}
+          onComplete={handleManualComplete}
+        />
       )}
     </div>
   );
@@ -476,15 +667,7 @@ function ImportRow({
           <p className="text-on-surface-variant text-xs mt-1">
             {item.message ||
               (draft
-                ? `${
-                    item.extractSource === 'gemini'
-                      ? 'Gemini'
-                      : item.extractSource === 'ocr'
-                        ? 'OCR'
-                        : item.extractSource === 'pdf_text'
-                          ? 'PDF text'
-                          : 'Parsed'
-                  }${
+                ? `${extractSourceLabel(item.extractSource)}${
                     typeof draft.confidence === 'number'
                       ? ` ${Math.round(draft.confidence * 100)}%`
                       : ''
@@ -523,81 +706,108 @@ function ImportRow({
 
       {item.expanded && draft && (
         <div className="border-t border-outline-variant p-5 bg-surface-container">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-            <Field label="Broker" value={draft.broker || ''} onChange={(broker) => updateDraft(item.id, { broker })} />
-            <Field label="Load ID / Load #" value={draft.loadRef || ''} onChange={(loadRef) => updateDraft(item.id, { loadRef })} />
-            <Field label="Gross / Flat rate" type="number" value={draft.payout?.replace(/[$,]/g, '') || ''} onChange={(payout) => updateDraft(item.id, { payout })} />
-            <Field label="Miles" type="number" value={draft.miles || ''} onChange={(miles) => updateDraft(item.id, { miles, milesSource: 'manual' })} />
-            <Field label="Weight (lbs)" value={draft.weight?.replace(/\s*lbs?/i, '') || ''} onChange={(raw) => updateDraft(item.id, { weight: raw.trim() ? `${raw.trim().replace(/,/g, '')} lbs` : undefined })} />
-            <Field label="Line haul" type="number" value={draft.lineHaul?.replace(/[$,]/g, '') || ''} onChange={(lineHaul) => updateDraft(item.id, { lineHaul })} />
-            <Field label="Accessorials" type="number" value={draft.accessorials?.replace(/[$,]/g, '') || ''} onChange={(accessorials) => updateDraft(item.id, { accessorials })} />
-            <Field label="Accessorial detail" value={draft.accessorialDetail || ''} onChange={(accessorialDetail) => updateDraft(item.id, { accessorialDetail })} />
-            <label className="block">
-              <span className="block text-xs uppercase tracking-wider text-on-surface-variant mb-1.5">Equipment</span>
-              <select
-                value={draft.type || 'Dry Van'}
-                onChange={(event) => updateDraft(item.id, { type: event.target.value as RateConDraft['type'] })}
-                className="w-full bg-surface-container-high border border-outline-variant px-3 py-2.5 text-sm outline-none focus:border-primary"
-              >
-                <option>Dry Van</option>
-                <option>Reefer</option>
-                <option>Flatbed</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="block text-xs uppercase tracking-wider text-on-surface-variant mb-1.5">Driver</span>
-              <select
-                value={draft.assignedDriverId || ''}
-                onChange={(event) => {
-                  const assignedDriverId = event.target.value;
-                  updateDraft(item.id, {
-                    assignedDriverId: assignedDriverId || null,
-                    assignedDriverName: drivers.find((driver) => driver.uid === assignedDriverId)
-                      ?.displayName,
-                  });
-                }}
-                className="w-full bg-surface-container-high border border-outline-variant px-3 py-2.5 text-sm outline-none focus:border-primary"
-              >
-                <option value="">Unassigned</option>
-                {drivers.map((driver) => (
-                  <option key={driver.uid} value={driver.uid}>
-                    {driver.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Field label="Dispatch date" type="date" value={draft.dispatchDate || ''} onChange={(dispatchDate) => updateDraft(item.id, { dispatchDate })} />
-            <Field label="Pickup date" type="date" value={draft.pickupDate || ''} onChange={(pickupDate) => updateDraft(item.id, { pickupDate })} />
-            <Field label="Delivery date" type="date" value={draft.deliveryDate || ''} onChange={(deliveryDate) => updateDraft(item.id, { deliveryDate })} />
-          </div>
-
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <MapPin className="text-primary" size={18} />
-              <h3 className="font-semibold">Ordered route</h3>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <button
               type="button"
-              onClick={() => recalculateMiles(item)}
-              className="flex items-center gap-2 text-primary text-xs font-bold uppercase tracking-wider"
+              onClick={() => patchItem(item.id, { showPdf: !item.showPdf })}
+              className="text-primary text-xs font-bold uppercase tracking-wider"
             >
-              <Route size={15} /> Recalculate semi truck miles
+              {item.showPdf ? 'Hide PDF' : 'View PDF'}
             </button>
           </div>
-          <StopAddressEditor
-            pickups={pickups}
-            dropoffs={dropoffs}
-            onPickupsChange={(next) => updateStops(item, next, dropoffs)}
-            onDropoffsChange={(next) => updateStops(item, pickups, next)}
-          />
 
-          {(draft.warnings?.length || !validation?.valid) && (
-            <div className="mt-5 border-l-2 border-error pl-3 text-sm text-on-surface-variant">
-              {[...(draft.warnings || []), ...(validation?.errors || [])].map((warning) => (
-                <p key={warning}>{warning}</p>
-              ))}
+          <div className={item.showPdf ? 'grid grid-cols-1 xl:grid-cols-2 gap-6' : ''}>
+            <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+                <Field label="Broker" value={draft.broker || ''} onChange={(broker) => updateDraft(item.id, { broker })} />
+                <Field label="Load ID / Load #" value={draft.loadRef || ''} onChange={(loadRef) => updateDraft(item.id, { loadRef })} />
+                <Field label="Gross / Flat rate" type="number" value={draft.payout?.replace(/[$,]/g, '') || ''} onChange={(payout) => updateDraft(item.id, { payout })} />
+                <Field label="Miles" type="number" value={draft.miles || ''} onChange={(miles) => updateDraft(item.id, { miles, milesSource: 'manual' })} />
+                <Field label="Weight (lbs)" value={draft.weight?.replace(/\s*lbs?/i, '') || ''} onChange={(raw) => updateDraft(item.id, { weight: raw.trim() ? `${raw.trim().replace(/,/g, '')} lbs` : undefined })} />
+                <Field label="Line haul" type="number" value={draft.lineHaul?.replace(/[$,]/g, '') || ''} onChange={(lineHaul) => updateDraft(item.id, { lineHaul })} />
+                <Field label="Accessorials" type="number" value={draft.accessorials?.replace(/[$,]/g, '') || ''} onChange={(accessorials) => updateDraft(item.id, { accessorials })} />
+                <Field label="Accessorial detail" value={draft.accessorialDetail || ''} onChange={(accessorialDetail) => updateDraft(item.id, { accessorialDetail })} />
+                <label className="block">
+                  <span className="block text-xs uppercase tracking-wider text-on-surface-variant mb-1.5">Equipment</span>
+                  <select
+                    value={draft.type || 'Dry Van'}
+                    onChange={(event) => updateDraft(item.id, { type: event.target.value as RateConDraft['type'] })}
+                    className="w-full bg-surface-container-high border border-outline-variant px-3 py-2.5 text-sm outline-none focus:border-primary"
+                  >
+                    <option>Dry Van</option>
+                    <option>Reefer</option>
+                    <option>Flatbed</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-xs uppercase tracking-wider text-on-surface-variant mb-1.5">Driver</span>
+                  <select
+                    value={draft.assignedDriverId || ''}
+                    onChange={(event) => {
+                      const assignedDriverId = event.target.value;
+                      updateDraft(item.id, {
+                        assignedDriverId: assignedDriverId || null,
+                        assignedDriverName: drivers.find((driver) => driver.uid === assignedDriverId)
+                          ?.displayName,
+                      });
+                    }}
+                    className="w-full bg-surface-container-high border border-outline-variant px-3 py-2.5 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">Unassigned</option>
+                    {drivers.map((driver) => (
+                      <option key={driver.uid} value={driver.uid}>
+                        {driver.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Field label="Dispatch date" type="date" value={draft.dispatchDate || ''} onChange={(dispatchDate) => updateDraft(item.id, { dispatchDate })} />
+                <Field label="Pickup date" type="date" value={draft.pickupDate || ''} onChange={(pickupDate) => updateDraft(item.id, { pickupDate })} />
+                <Field label="Delivery date" type="date" value={draft.deliveryDate || ''} onChange={(deliveryDate) => updateDraft(item.id, { deliveryDate })} />
+              </div>
+
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <MapPin className="text-primary" size={18} />
+                  <h3 className="font-semibold">Ordered route</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => recalculateMiles(item)}
+                  className="flex items-center gap-2 text-primary text-xs font-bold uppercase tracking-wider"
+                >
+                  <Route size={15} /> Recalculate semi truck miles
+                </button>
+              </div>
+              <StopAddressEditor
+                pickups={pickups}
+                dropoffs={dropoffs}
+                onPickupsChange={(next) => updateStops(item, next, dropoffs)}
+                onDropoffsChange={(next) => updateStops(item, pickups, next)}
+              />
+
+              {(draft.warnings?.length || !validation?.valid) && (
+                <div className="mt-5 border-l-2 border-error pl-3 text-sm text-on-surface-variant">
+                  {[...(draft.warnings || []), ...(validation?.errors || [])].map((warning) => (
+                    <p key={warning}>{warning}</p>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            {item.showPdf && (
+              <div>
+                <p className="text-xs uppercase tracking-wider text-on-surface-variant mb-2">
+                  Source document
+                </p>
+                <PdfHighlightViewer
+                  file={item.file}
+                  highlights={item.highlights || []}
+                  selectionEnabled={false}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </article>
