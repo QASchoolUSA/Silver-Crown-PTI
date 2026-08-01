@@ -115,6 +115,18 @@ export default function DashboardPage() {
     <div>
       <h1 className="font-[family-name:var(--font-bebas)] text-4xl tracking-wider mb-8">DASHBOARD</h1>
 
+      <div className="mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+            Active Loads Map
+          </h2>
+          <Link to="/loads" className="text-primary text-xs font-bold uppercase tracking-wider hover:underline">
+            View all loads →
+          </Link>
+        </div>
+        <ActiveLoadsMap loads={activeLoads} />
+      </div>
+
       <div className="flex flex-wrap gap-4 mb-6">
         <div>
           <label className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
@@ -242,18 +254,6 @@ export default function DashboardPage() {
             <p className={`text-4xl font-bold ${color}`}>{value}</p>
           </div>
         ))}
-      </div>
-
-      <div className="mb-10">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-            Active Loads Map
-          </h2>
-          <Link to="/loads" className="text-primary text-xs font-bold uppercase tracking-wider hover:underline">
-            View all loads →
-          </Link>
-        </div>
-        <ActiveLoadsMap loads={activeLoads} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

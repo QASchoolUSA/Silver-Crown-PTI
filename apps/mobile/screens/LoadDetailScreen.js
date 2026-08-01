@@ -15,6 +15,22 @@ import { getLoadById, getRouteWeather, getOrderedStops, buildGoogleMapsDirection
 import LoadCard from '../components/LoadCard';
 import { colors, typography } from '../theme';
 
+function WeatherSkeletonCard() {
+  return (
+    <View style={styles.weatherCard}>
+      <View style={styles.skeletonTitleRow}>
+        <View style={styles.skeletonTitle} />
+        <View style={styles.skeletonBadge} />
+      </View>
+      <View style={styles.skeletonAlert} />
+      <View style={styles.skeletonPeriodRow}>
+        <View style={styles.skeletonPeriodText} />
+        <View style={styles.skeletonTemp} />
+      </View>
+    </View>
+  );
+}
+
 function WeatherLocationCard({ weather }) {
   if (!weather.available) {
     return (
@@ -27,9 +43,10 @@ function WeatherLocationCard({ weather }) {
 
   const hasAlerts = weather.alerts.length > 0;
   const showCaution = weather.hasAdverseConditions && !hasAlerts;
+  const period = weather.periods?.[0];
 
   return (
-    <View style={styles.weatherCard}>
+    <View style={[styles.weatherCard, hasAlerts && styles.weatherCardAlert]}>
       <View style={styles.weatherHeader}>
         <Text style={styles.weatherLocation}>{weather.label}</Text>
         {hasAlerts ? (
@@ -40,36 +57,41 @@ function WeatherLocationCard({ weather }) {
           <View style={styles.badgeCaution}>
             <Text style={styles.badgeCautionText}>Caution</Text>
           </View>
-        ) : (
-          <View style={styles.badgeClear}>
-            <Text style={styles.badgeClearText}>All Clear</Text>
-          </View>
-        )}
+        ) : null}
       </View>
 
-      {weather.alerts.map((alert) => (
-        <View key={alert.id} style={styles.alertBox}>
-          <Text style={styles.alertEvent}>{alert.event}</Text>
-          <Text style={styles.alertHeadline}>{alert.headline}</Text>
-        </View>
-      ))}
+      {hasAlerts
+        ? weather.alerts.map((alert) => (
+            <View key={alert.id} style={styles.alertBox}>
+              <View style={styles.alertMeta}>
+                {alert.severity ? (
+                  <Text style={styles.alertSeverity}>{alert.severity}</Text>
+                ) : null}
+                <Text style={styles.alertEvent}>{alert.event}</Text>
+              </View>
+              {alert.headline ? <Text style={styles.alertHeadline}>{alert.headline}</Text> : null}
+              {alert.description ? (
+                <Text style={styles.alertDescription} numberOfLines={2}>
+                  {alert.description}
+                </Text>
+              ) : null}
+            </View>
+          ))
+        : null}
 
-      {weather.periods.map((period) => (
-        <View key={`${period.name}-${period.startTime}`} style={styles.periodRow}>
+      {period ? (
+        <View style={styles.periodRow}>
           <View style={styles.periodInfo}>
             <Text style={styles.periodName}>{period.name}</Text>
-            <Text style={styles.periodForecast}>{period.shortForecast}</Text>
-          </View>
-          <View style={styles.periodTemp}>
-            <Text style={styles.periodTempValue}>
-              {period.temperature}°{period.temperatureUnit}
+            <Text style={styles.periodForecast} numberOfLines={1}>
+              {period.shortForecast}
             </Text>
-            {period.windSpeed ? (
-              <Text style={styles.periodWind}>{period.windSpeed}</Text>
-            ) : null}
           </View>
+          <Text style={styles.periodTempValue}>
+            {period.temperature}°{period.temperatureUnit}
+          </Text>
         </View>
-      ))}
+      ) : null}
     </View>
   );
 }
@@ -235,17 +257,27 @@ export default function LoadDetailScreen({ route }) {
       <Text style={styles.sectionTitle}>Route Weather</Text>
 
       {weatherLoading && !weather && (
-        <ActivityIndicator size="small" color={colors.primary} style={styles.weatherSpinner} />
+        <View style={styles.weatherStack}>
+          <WeatherSkeletonCard />
+          <WeatherSkeletonCard />
+        </View>
       )}
 
       {routeHasAdverse && weather && (
         <View style={[styles.banner, routeHasAlerts ? styles.bannerAlert : styles.bannerCaution]}>
           <AlertTriangle size={18} color={routeHasAlerts ? colors.error : '#fbbf24'} />
-          <Text style={[styles.bannerText, routeHasAlerts ? styles.bannerTextAlert : styles.bannerTextCaution]}>
-            {routeHasAlerts
-              ? 'Active weather alerts on this route'
-              : 'Adverse conditions forecasted'}
-          </Text>
+          <View style={styles.bannerCopy}>
+            <Text style={[styles.bannerText, routeHasAlerts ? styles.bannerTextAlert : styles.bannerTextCaution]}>
+              {routeHasAlerts
+                ? 'Active weather alerts on this route'
+                : 'Adverse conditions forecasted'}
+            </Text>
+            <Text style={styles.bannerHint}>
+              {routeHasAlerts
+                ? 'Review warnings below before dispatch.'
+                : 'Check origin and destination conditions before dispatch.'}
+            </Text>
+          </View>
         </View>
       )}
 
@@ -356,21 +388,27 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  weatherSpinner: { marginBottom: 16 },
   banner: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     padding: 12,
     borderRadius: 8,
     marginBottom: 12,
     borderWidth: 1,
   },
-  bannerAlert: { backgroundColor: 'rgba(147, 0, 10, 0.2)', borderColor: colors.error },
+  bannerAlert: { backgroundColor: 'rgba(147, 0, 10, 0.25)', borderColor: colors.error },
   bannerCaution: { backgroundColor: 'rgba(251, 191, 36, 0.1)', borderColor: '#fbbf24' },
-  bannerText: { flex: 1, fontFamily: typography.montserratBold, fontSize: 13 },
+  bannerCopy: { flex: 1 },
+  bannerText: { fontFamily: typography.montserratBold, fontSize: 13 },
   bannerTextAlert: { color: colors.error },
   bannerTextCaution: { color: '#fbbf24' },
+  bannerHint: {
+    color: colors.onSurfaceVariant,
+    fontFamily: typography.montserrat,
+    fontSize: 11,
+    marginTop: 4,
+  },
   weatherStack: { gap: 12 },
   weatherCard: {
     backgroundColor: colors.surfaceContainer,
@@ -379,24 +417,63 @@ const styles = StyleSheet.create({
     borderColor: colors.outlineVariant,
     padding: 16,
   },
+  weatherCardAlert: {
+    borderColor: colors.error,
+  },
   weatherHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   weatherLocation: { color: colors.onSurface, fontFamily: typography.bebas, fontSize: 22, flex: 1, textTransform: 'uppercase' },
-  badgeAlert: { backgroundColor: 'rgba(147, 0, 10, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
+  badgeAlert: { backgroundColor: 'rgba(147, 0, 10, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   badgeAlertText: { color: colors.error, fontFamily: typography.montserratBold, fontSize: 10, textTransform: 'uppercase' },
-  badgeCaution: { backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
+  badgeCaution: { backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   badgeCautionText: { color: '#fbbf24', fontFamily: typography.montserratBold, fontSize: 10, textTransform: 'uppercase' },
-  badgeClear: { backgroundColor: 'rgba(137, 206, 255, 0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
-  badgeClearText: { color: colors.primary, fontFamily: typography.montserratBold, fontSize: 10, textTransform: 'uppercase' },
-  alertBox: { backgroundColor: 'rgba(147, 0, 10, 0.15)', borderRadius: 8, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: colors.error },
-  alertEvent: { color: colors.error, fontFamily: typography.montserratBold, fontSize: 13 },
-  alertHeadline: { color: colors.onSurface, fontFamily: typography.montserrat, fontSize: 12, marginTop: 4 },
-  periodRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, marginTop: 10, borderTopWidth: 1, borderTopColor: colors.outlineVariant },
+  alertBox: {
+    backgroundColor: 'rgba(147, 0, 10, 0.2)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.error,
+  },
+  alertMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 4 },
+  alertSeverity: {
+    color: colors.error,
+    fontFamily: typography.montserratBold,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    backgroundColor: 'rgba(147, 0, 10, 0.25)',
+    overflow: 'hidden',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  alertEvent: { color: colors.error, fontFamily: typography.montserratBold, fontSize: 14 },
+  alertHeadline: { color: colors.onSurface, fontFamily: typography.montserrat, fontSize: 13, marginTop: 2 },
+  alertDescription: {
+    color: colors.onSurfaceVariant,
+    fontFamily: typography.montserrat,
+    fontSize: 12,
+    marginTop: 6,
+    lineHeight: 17,
+  },
+  periodRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.outlineVariant,
+  },
   periodInfo: { flex: 1, paddingRight: 12 },
   periodName: { color: colors.onSurface, fontFamily: typography.montserratBold, fontSize: 14 },
   periodForecast: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 12, marginTop: 2 },
-  periodTemp: { alignItems: 'flex-end' },
   periodTempValue: { color: colors.onSurface, fontFamily: typography.montserratBold, fontSize: 14 },
-  periodWind: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 10, marginTop: 2 },
+  skeletonTitleRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  skeletonTitle: { width: 110, height: 18, borderRadius: 4, backgroundColor: colors.surfaceContainerHigh },
+  skeletonBadge: { width: 48, height: 18, borderRadius: 4, backgroundColor: colors.surfaceContainerHigh },
+  skeletonAlert: { height: 64, borderRadius: 8, backgroundColor: colors.surfaceContainerHigh, marginBottom: 12 },
+  skeletonPeriodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.outlineVariant },
+  skeletonPeriodText: { width: 140, height: 14, borderRadius: 4, backgroundColor: colors.surfaceContainerHigh },
+  skeletonTemp: { width: 36, height: 14, borderRadius: 4, backgroundColor: colors.surfaceContainerHigh },
   weatherUnavailable: { color: colors.onSurfaceVariant, fontFamily: typography.montserrat, fontSize: 14 },
   freightDetails: {
     backgroundColor: colors.surfaceContainer,
