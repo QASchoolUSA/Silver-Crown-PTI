@@ -1,6 +1,7 @@
 import * as admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
+import { defineSecret } from 'firebase-functions/params';
 import { fetchRouteWeatherForFunction, isValidCoords } from './nws';
 import { geocodeSearch } from './geocode';
 export { extractDocumentData } from './extractDocument';
@@ -8,6 +9,8 @@ export { calculateRouteMiles } from './geoapify';
 
 admin.initializeApp();
 const db = admin.firestore();
+
+const mapboxAccessToken = defineSecret('MAPBOX_ACCESS_TOKEN');
 
 setGlobalOptions({ maxInstances: 10 });
 
@@ -150,7 +153,7 @@ async function requireAdmin(uid: string): Promise<void> {
   }
 }
 
-export const geocodeAddress = onCall(async (request) => {
+export const geocodeAddress = onCall({ secrets: [mapboxAccessToken] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Must be signed in to geocode addresses.');
   }
@@ -162,10 +165,16 @@ export const geocodeAddress = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Query must be at least 3 characters.');
   }
 
+  const accessToken = process.env.MAPBOX_ACCESS_TOKEN || mapboxAccessToken.value();
+  if (!accessToken) {
+    throw new HttpsError('failed-precondition', 'Mapbox is not configured.');
+  }
+
   try {
-    const results = await geocodeSearch(query);
+    const results = await geocodeSearch(query, accessToken);
     return { results };
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     throw new HttpsError(
       'internal',
       error instanceof Error ? error.message : 'Geocoding failed.'

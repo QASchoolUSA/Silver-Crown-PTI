@@ -1,10 +1,11 @@
-const PHOTON_BASE = 'https://photon.komoot.io/api/';
-const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
-const USER_AGENT = 'SilverCrown/1.0 (load geocoding)';
+import { HttpsError } from 'firebase-functions/v2/https';
+
+const MAPBOX_GEOCODE_BASE = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
 const THROTTLE_MS = 300;
 const CACHE_MAX = 50;
+const MAX_RESULTS = 5;
 
-/** Continental US bbox bias (minLon, minLat, maxLon, maxLat) */
+/** Continental US bbox: minLon,minLat,maxLon,maxLat */
 const US_BBOX = '-125.0,24.0,-66.0,49.5';
 
 let lastRequestAt = 0;
@@ -16,46 +17,50 @@ export interface GeocodeResult {
   placeId?: string;
 }
 
-interface PhotonProperties {
-  osm_id?: number;
-  osm_type?: string;
-  osm_key?: string;
-  osm_value?: string;
-  name?: string;
-  housenumber?: string;
-  street?: string;
-  city?: string;
-  state?: string;
-  postcode?: string;
-  country?: string;
+export interface MapboxFeature {
+  id?: string;
+  place_name?: string;
+  text?: string;
+  center?: [number, number];
+  geometry?: { coordinates?: [number, number] };
 }
 
-interface PhotonFeature {
-  geometry: { coordinates: [number, number] };
-  properties: PhotonProperties;
-}
-
-export function formatPhotonAddress(props: PhotonProperties): string {
-  const streetLine = [props.housenumber, props.street].filter(Boolean).join(' ');
-  const locality = [props.city, props.state, props.postcode].filter(Boolean).join(', ');
-  const parts = [streetLine || props.name, locality, props.country].filter(Boolean);
-  return parts.join(', ');
-}
-
-export function mapPhotonFeatures(features: PhotonFeature[]): GeocodeResult[] {
+export function mapMapboxFeatures(features: MapboxFeature[]): GeocodeResult[] {
   const results: GeocodeResult[] = [];
   for (const feature of features) {
-    const [lon, lat] = feature.geometry.coordinates;
-    const address = formatPhotonAddress(feature.properties);
+    const coordsPair = feature.center ?? feature.geometry?.coordinates;
+    if (!coordsPair || coordsPair.length < 2) continue;
+    const [lon, lat] = coordsPair;
+    const address = (feature.place_name || feature.text || '').trim();
     if (!address || Number.isNaN(lat) || Number.isNaN(lon)) continue;
-    const { osm_id, osm_type } = feature.properties;
     results.push({
       address,
       coords: { latitude: lat, longitude: lon },
-      placeId: osm_id && osm_type ? `${osm_type}:${osm_id}` : undefined,
+      placeId: feature.id,
     });
   }
   return results;
+}
+
+export function assertMapboxHttpOk(status: number, bodyMessage?: string): void {
+  if (status >= 200 && status < 300) return;
+  if (status === 401 || status === 403) {
+    throw new HttpsError(
+      'failed-precondition',
+      bodyMessage ||
+        'Mapbox request denied. Check MAPBOX_ACCESS_TOKEN and token scopes (geocoding).'
+    );
+  }
+  if (status === 429) {
+    throw new HttpsError('resource-exhausted', 'Mapbox geocoding quota exceeded.');
+  }
+  if (status === 422) {
+    throw new HttpsError('invalid-argument', bodyMessage || 'Invalid Mapbox geocoding request.');
+  }
+  throw new HttpsError(
+    'internal',
+    bodyMessage || `Mapbox geocoding failed (${status})`
+  );
 }
 
 async function throttle(): Promise<void> {
@@ -87,89 +92,53 @@ function cacheSet(key: string, results: GeocodeResult[]): void {
   }
 }
 
-export async function searchPhoton(query: string): Promise<GeocodeResult[]> {
+export async function searchMapbox(
+  query: string,
+  accessToken: string
+): Promise<GeocodeResult[]> {
   const trimmed = query.trim();
   if (trimmed.length < 3) return [];
+  if (!accessToken) {
+    throw new HttpsError('failed-precondition', 'Mapbox is not configured.');
+  }
 
   await throttle();
 
+  const encoded = encodeURIComponent(trimmed);
   const params = new URLSearchParams({
-    q: trimmed,
-    limit: '5',
-    lang: 'en',
+    access_token: accessToken,
+    autocomplete: 'true',
+    limit: String(MAX_RESULTS),
+    country: 'us',
+    types: 'address,place,locality,neighborhood,poi',
     bbox: US_BBOX,
+    language: 'en',
   });
 
-  const response = await fetch(`${PHOTON_BASE}?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`Photon geocoding failed (${response.status})`);
-  }
+  const response = await fetch(`${MAPBOX_GEOCODE_BASE}/${encoded}.json?${params.toString()}`);
+  const data = (await response.json()) as { features?: MapboxFeature[]; message?: string };
 
-  const data = (await response.json()) as { features?: PhotonFeature[] };
-  return mapPhotonFeatures(data.features ?? []);
+  assertMapboxHttpOk(response.status, data.message);
+
+  return mapMapboxFeatures(data.features ?? []);
 }
 
-export async function searchNominatim(query: string): Promise<GeocodeResult[]> {
-  const trimmed = query.trim();
-  if (trimmed.length < 3) return [];
-
-  await throttle();
-
-  const params = new URLSearchParams({
-    q: trimmed,
-    format: 'json',
-    limit: '5',
-    addressdetails: '1',
-    countrycodes: 'us',
-  });
-
-  const response = await fetch(`${NOMINATIM_BASE}?${params.toString()}`, {
-    headers: { 'User-Agent': USER_AGENT },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Nominatim geocoding failed (${response.status})`);
-  }
-
-  const data = (await response.json()) as Array<{
-    display_name: string;
-    lat: string;
-    lon: string;
-    place_id: number;
-  }>;
-
-  return data.map((item) => ({
-    address: item.display_name,
-    coords: {
-      latitude: parseFloat(item.lat),
-      longitude: parseFloat(item.lon),
-    },
-    placeId: String(item.place_id),
-  }));
-}
-
-export async function geocodeSearch(query: string): Promise<GeocodeResult[]> {
+export async function geocodeSearch(
+  query: string,
+  accessToken: string
+): Promise<GeocodeResult[]> {
   const trimmed = query.trim();
   if (trimmed.length < 3) return [];
 
   const cached = cacheGet(trimmed);
   if (cached) return cached;
 
-  let results: GeocodeResult[] = [];
-  try {
-    results = await searchPhoton(trimmed);
-  } catch {
-    results = [];
-  }
-
-  if (results.length === 0) {
-    try {
-      results = await searchNominatim(trimmed);
-    } catch {
-      results = [];
-    }
-  }
-
+  const results = await searchMapbox(trimmed, accessToken);
   cacheSet(trimmed, results);
   return results;
+}
+
+/** Test helper — clears the in-memory cache between cases */
+export function clearGeocodeCache(): void {
+  cache.clear();
 }
