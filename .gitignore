@@ -46,9 +46,9 @@ firebase/service-account.json
 /ios
 /android
 
-# Xcode / XcodeGen (apps/ios)
-apps/ios/*.xcodeproj/
-apps/ios/*.xcworkspace/
+# Xcode local/user state (keep apps/ios/*.xcodeproj committed for CI/TestFlight)
 apps/ios/DerivedData/
 **/xcuserdata/
 *.xcuserstate
+*.xccheckout
+*.xcscmblueprint

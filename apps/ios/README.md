@@ -11,6 +11,9 @@ Native SwiftUI client for Silver Crown PTI — driver + admin parity, Maintenanc
 
 ## Generate & run
 
+`SilverCrown.xcodeproj` is **committed** so Xcode Cloud / TestFlight can find it.
+Regenerate locally after changing `project.yml`:
+
 ```bash
 cd apps/ios
 xcodegen generate
@@ -19,11 +22,13 @@ open SilverCrown.xcodeproj
 
 Select the **SilverCrown** scheme, pick an iPhone or iPad simulator, and Run.
 
-Or from the repo root after generating:
+Or from the repo root:
 
 ```bash
 pnpm ios
 ```
+
+After regenerating, commit any `project.pbxproj` / `Package.resolved` changes before pushing a TestFlight build.
 
 ## Features
 
