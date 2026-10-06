@@ -22,15 +22,20 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.trucking.silvercrown-
         PRODUCT_NAME: SilverCrown
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0.1"
+        CURRENT_PROJECT_VERSION: "10"
+        DEVELOPMENT_TEAM: 6MM44B6ZYT
+        CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         INFOPLIST_KEY_CFBundleDisplayName: Silver Crown
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSCameraUsageDescription: Silver Crown needs the camera to capture inspection defect photos.
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Silver Crown needs photo library access for inspection photos.
+        # Avoid App Store Connect export-compliance prompts / silent prep failures
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: false
         SWIFT_STRICT_CONCURRENCY: minimal
     dependencies:
       - package: firebase-ios-sdk
@@ -48,3 +53,5 @@ schemes:
         SilverCrown: all
     run:
       config: Debug
+    archive:
+      config: Release

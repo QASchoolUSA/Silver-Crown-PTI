@@ -30,7 +30,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1ECA6AA4F534DD8ED13E38ED /* SilverCrown.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SilverCrown.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1ECA6AA4F534DD8ED13E38ED /* SilverCrown.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SilverCrown.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		203A2461D615C0EF47E3D252 /* MaintenanceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintenanceViews.swift; sourceTree = "<group>"; };
 		32E2E97694F6EBFB71D27E0C /* ImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePicker.swift; sourceTree = "<group>"; };
 		3E120371CF9381857B4EC408 /* AuthStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStackView.swift; sourceTree = "<group>"; };
@@ -249,6 +249,12 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					EA287549DF51FB2D9579BEC9 = {
+						DevelopmentTeam = 6MM44B6ZYT;
+						ProvisioningStyle = Automatic;
+					};
+				};
 			};
 			buildConfigurationList = 9E3913B3D7DC18E0AB54B79E /* Build configuration list for PBXProject "SilverCrown" */;
 			developmentRegion = en;
@@ -313,11 +319,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 6MM44B6ZYT;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Silver Crown";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Silver Crown needs the camera to capture inspection defect photos.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Silver Crown needs photo library access for inspection photos.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -326,7 +335,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.trucking.silvercrown-";
 				PRODUCT_NAME = SilverCrown;
 				SDKROOT = iphoneos;
@@ -339,11 +348,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 6MM44B6ZYT;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Silver Crown";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Silver Crown needs the camera to capture inspection defect photos.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Silver Crown needs photo library access for inspection photos.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -352,7 +364,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.trucking.silvercrown-";
 				PRODUCT_NAME = SilverCrown;
 				SDKROOT = iphoneos;
