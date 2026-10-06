@@ -23,7 +23,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.trucking.silvercrown-
         PRODUCT_NAME: SilverCrown
         MARKETING_VERSION: "1.0.1"
-        CURRENT_PROJECT_VERSION: "11"
+        CURRENT_PROJECT_VERSION: "12"
         DEVELOPMENT_TEAM: 6MM44B6ZYT
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
@@ -31,14 +31,35 @@ targets:
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         INFOPLIST_KEY_CFBundleDisplayName: Silver Crown
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        # iPhone: portrait. iPad: all orientations required for multitasking / App Store validation.
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSCameraUsageDescription: Silver Crown needs the camera to capture inspection defect photos.
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Silver Crown needs photo library access for inspection photos.
-        # Avoid App Store Connect export-compliance prompts / silent prep failures
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: false
         SWIFT_STRICT_CONCURRENCY: minimal
+    info:
+      path: SilverCrown/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UIAppFonts:
+          - BebasNeue-Regular.ttf
+          - Montserrat-Regular.ttf
+          - Montserrat-SemiBold.ttf
+          - Montserrat-Bold.ttf
+        CFBundleDisplayName: Silver Crown
+        ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: Silver Crown needs the camera to capture inspection defect photos.
+        NSPhotoLibraryUsageDescription: Silver Crown needs photo library access for inspection photos.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+
     dependencies:
       - package: firebase-ios-sdk
         product: FirebaseAuth

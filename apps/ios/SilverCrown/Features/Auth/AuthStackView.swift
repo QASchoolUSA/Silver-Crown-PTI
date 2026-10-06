@@ -16,24 +16,31 @@ struct LoginView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("SILVER CROWN")
-                    .font(.system(size: 40, weight: .bold, design: .default))
-                    .foregroundStyle(ThemeColor.primary)
-                    .tracking(4)
-                Text("Sign in to run PTIs, check loads, and log unit service.")
-                    .foregroundStyle(ThemeColor.onSurfaceVariant)
-                    .font(.subheadline)
+            VStack(alignment: .leading, spacing: Spacing.xl) {
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    Text("SILVER CROWN")
+                        .font(SCFont.display(44))
+                        .foregroundStyle(ThemeColor.primary)
+                        .tracking(4)
+                    Text("Sign in to run PTIs, check loads, and log unit service.")
+                        .font(SCFont.subheadline)
+                        .foregroundStyle(ThemeColor.onSurfaceVariant)
+                }
+                .scAppearFade()
 
-                TextField("Email", text: $email)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
-                    .textFieldStyle(SCFieldStyle())
-                SecureField("Password", text: $password)
-                    .textFieldStyle(SCFieldStyle())
+                VStack(spacing: Spacing.md) {
+                    TextField("Email", text: $email)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .textFieldStyle(SCFieldStyle())
+                    SecureField("Password", text: $password)
+                        .textFieldStyle(SCFieldStyle())
+                }
 
                 if let error {
-                    Text(error).foregroundStyle(ThemeColor.error).font(.footnote)
+                    Text(error)
+                        .font(SCFont.caption)
+                        .foregroundStyle(ThemeColor.error)
                 }
 
                 Button {
@@ -42,23 +49,33 @@ struct LoginView: View {
                     if busy {
                         ProgressView().tint(ThemeColor.onPrimary)
                     } else {
-                        Text("Sign In").fontWeight(.semibold)
+                        Text("Sign In")
                     }
                 }
                 .buttonStyle(SCPrimaryButtonStyle())
                 .disabled(busy)
 
-                NavigationLink("Create account with invite code") {
+                NavigationLink {
                     SignUpView()
+                } label: {
+                    Text("Create account with invite code")
+                        .font(SCFont.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(ThemeColor.primary)
                 }
-                .foregroundStyle(ThemeColor.primary)
-                .font(.subheadline)
             }
-            .padding(24)
+            .padding(Spacing.xl)
             .frame(maxWidth: LayoutMetrics.settingsMaxWidth)
             .frame(maxWidth: .infinity)
         }
-        .background(ThemeColor.surface.ignoresSafeArea())
+        .background(
+            LinearGradient(
+                colors: [ThemeColor.surface, ThemeColor.surfaceContainerLow],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
         .navigationBarHidden(true)
     }
 
@@ -84,26 +101,48 @@ struct SignUpView: View {
     @State private var busy = false
 
     var body: some View {
-        Form {
-            Section("Account") {
-                TextField("Full name", text: $name)
-                TextField("Email", text: $email)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
-                SecureField("Password", text: $password)
-                TextField("Invite code", text: $invite)
-                    .textInputAutocapitalization(.characters)
-            }
-            if let error {
-                Section { Text(error).foregroundStyle(ThemeColor.error) }
-            }
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                Text("JOIN FLEET")
+                    .font(SCFont.sectionTitle)
+                    .foregroundStyle(ThemeColor.primary)
+                    .tracking(1.5)
+
+                Text("Use your company invite code to create a driver or admin account.")
+                    .font(SCFont.subheadline)
+                    .foregroundStyle(ThemeColor.onSurfaceVariant)
+
+                SCCard {
+                    VStack(spacing: Spacing.md) {
+                        TextField("Full name", text: $name)
+                            .textFieldStyle(SCFieldStyle())
+                        TextField("Email", text: $email)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                            .textFieldStyle(SCFieldStyle())
+                        SecureField("Password", text: $password)
+                            .textFieldStyle(SCFieldStyle())
+                        TextField("Invite code", text: $invite)
+                            .textInputAutocapitalization(.characters)
+                            .textFieldStyle(SCFieldStyle())
+                    }
+                }
+
+                if let error {
+                    Text(error).font(SCFont.caption).foregroundStyle(ThemeColor.error)
+                }
+
                 Button(busy ? "Creating…" : "Create Account") {
                     Task { await signUp() }
                 }
+                .buttonStyle(SCPrimaryButtonStyle())
                 .disabled(busy)
             }
+            .padding(Spacing.xl)
+            .frame(maxWidth: LayoutMetrics.settingsMaxWidth)
+            .frame(maxWidth: .infinity)
         }
+        .background(ThemeColor.surface.ignoresSafeArea())
         .navigationTitle("Sign Up")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -123,26 +162,5 @@ struct SignUpView: View {
         } catch {
             self.error = error.localizedDescription
         }
-    }
-}
-
-struct SCFieldStyle: TextFieldStyle {
-    func _body(configuration: TextField<Self._Label>) -> some View {
-        configuration
-            .padding(14)
-            .background(ThemeColor.surfaceContainerHigh)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .foregroundStyle(ThemeColor.onSurface)
-    }
-}
-
-struct SCPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(ThemeColor.primary.opacity(configuration.isPressed ? 0.85 : 1))
-            .foregroundStyle(ThemeColor.onPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

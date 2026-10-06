@@ -38,7 +38,7 @@ struct LoadStop: Codable, Identifiable, Equatable {
     var sequence: Int
 }
 
-struct Load: Identifiable, Equatable {
+struct Load: Identifiable, Equatable, Hashable {
     let id: String
     var companyId: String
     var assignedDriverId: String?
@@ -83,6 +83,14 @@ struct Load: Identifiable, Equatable {
         self.createdAt = data["createdAt"] as? String ?? ""
         self.loadRef = data["loadRef"] as? String
         self.broker = data["broker"] as? String
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: Load, rhs: Load) -> Bool {
+        lhs.id == rhs.id
     }
 
     private static func parseStops(_ raw: Any?) -> [LoadStop] {

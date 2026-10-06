@@ -7,9 +7,16 @@ struct RootView: View {
         Group {
             switch appModel.authState {
             case .loading:
-                ProgressView("Loading…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(ThemeColor.surface)
+                VStack(spacing: Spacing.lg) {
+                    Text("SILVER CROWN")
+                        .font(SCFont.display(36))
+                        .foregroundStyle(ThemeColor.primary)
+                        .tracking(3)
+                    ProgressView()
+                        .tint(ThemeColor.primary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(ThemeColor.surface.ignoresSafeArea())
             case .signedOut:
                 AuthStackView()
             case .signedIn:

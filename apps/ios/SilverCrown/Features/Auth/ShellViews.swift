@@ -12,6 +12,7 @@ struct DriverShellView: View {
                 PhoneDriverShell(profile: profile)
             }
         }
+        .tint(ThemeColor.primary)
     }
 }
 
@@ -27,6 +28,7 @@ struct AdminShellView: View {
                 PhoneAdminShell(profile: profile)
             }
         }
+        .tint(ThemeColor.primary)
     }
 }
 
@@ -38,7 +40,7 @@ struct PhoneDriverShell: View {
             NavigationStack {
                 LoadBoardView(profile: profile, companyWide: false)
             }
-            .tabItem { Label("Loads", systemImage: "truck.box") }
+            .tabItem { Label("Loads", systemImage: "truck.box.fill") }
 
             NavigationStack {
                 InspectionsListView(profile: profile, companyWide: false)
@@ -48,12 +50,12 @@ struct PhoneDriverShell: View {
             NavigationStack {
                 MaintenanceListView(profile: profile)
             }
-            .tabItem { Label("Maintenance", systemImage: "wrench.and.screwdriver") }
+            .tabItem { Label("Maintenance", systemImage: "wrench.and.screwdriver.fill") }
 
             NavigationStack {
                 ProfileView(profile: profile)
             }
-            .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+            .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
         }
     }
 }
@@ -66,7 +68,7 @@ struct PhoneAdminShell: View {
             NavigationStack {
                 LoadBoardView(profile: profile, companyWide: true)
             }
-            .tabItem { Label("Loads", systemImage: "truck.box") }
+            .tabItem { Label("Loads", systemImage: "truck.box.fill") }
 
             NavigationStack {
                 InspectionsListView(profile: profile, companyWide: true)
@@ -76,12 +78,12 @@ struct PhoneAdminShell: View {
             NavigationStack {
                 MaintenanceListView(profile: profile)
             }
-            .tabItem { Label("Maintenance", systemImage: "wrench.and.screwdriver") }
+            .tabItem { Label("Maintenance", systemImage: "wrench.and.screwdriver.fill") }
 
             NavigationStack {
                 ProfileView(profile: profile)
             }
-            .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+            .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
         }
     }
 }
@@ -93,6 +95,24 @@ enum PadDestination: Hashable {
     case profile
 }
 
+struct PadSidebarHeader: View {
+    let roleLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("SILVER CROWN")
+                .font(SCFont.display(28))
+                .foregroundStyle(ThemeColor.primary)
+                .tracking(2)
+            Text(roleLabel)
+                .font(SCFont.captionBold)
+                .foregroundStyle(ThemeColor.onSurfaceVariant)
+                .tracking(0.8)
+        }
+        .padding(.vertical, Spacing.sm)
+    }
+}
+
 struct PadDriverShell: View {
     let profile: AppUser
     @State private var selection: PadDestination? = .loads
@@ -100,12 +120,17 @@ struct PadDriverShell: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                Label("Loads", systemImage: "truck.box").tag(PadDestination.loads)
+                Section {
+                    PadSidebarHeader(roleLabel: "DRIVER")
+                }
+                Label("Loads", systemImage: "truck.box.fill").tag(PadDestination.loads)
                 Label("PTI", systemImage: "checklist").tag(PadDestination.inspections)
-                Label("Maintenance", systemImage: "wrench.and.screwdriver").tag(PadDestination.maintenance)
-                Label("Profile", systemImage: "person.crop.circle").tag(PadDestination.profile)
+                Label("Maintenance", systemImage: "wrench.and.screwdriver.fill").tag(PadDestination.maintenance)
+                Label("Profile", systemImage: "person.crop.circle.fill").tag(PadDestination.profile)
             }
-            .navigationTitle("Silver Crown")
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(ThemeColor.surfaceContainerLow)
         } detail: {
             switch selection ?? .loads {
             case .loads:
@@ -128,12 +153,17 @@ struct PadAdminShell: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                Label("Loads", systemImage: "truck.box").tag(PadDestination.loads)
+                Section {
+                    PadSidebarHeader(roleLabel: "ADMIN")
+                }
+                Label("Loads", systemImage: "truck.box.fill").tag(PadDestination.loads)
                 Label("PTIs", systemImage: "checklist").tag(PadDestination.inspections)
-                Label("Maintenance", systemImage: "wrench.and.screwdriver").tag(PadDestination.maintenance)
-                Label("Profile", systemImage: "person.crop.circle").tag(PadDestination.profile)
+                Label("Maintenance", systemImage: "wrench.and.screwdriver.fill").tag(PadDestination.maintenance)
+                Label("Profile", systemImage: "person.crop.circle.fill").tag(PadDestination.profile)
             }
-            .navigationTitle("Silver Crown")
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(ThemeColor.surfaceContainerLow)
         } detail: {
             switch selection ?? .loads {
             case .loads:

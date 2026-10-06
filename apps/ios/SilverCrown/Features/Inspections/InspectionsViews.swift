@@ -19,45 +19,54 @@ struct InspectionsListView: View {
     }
 
     var body: some View {
-        List {
-            if companyWide {
-                TextField("Filter truck / driver", text: $truckFilter)
-            }
-            if filtered.isEmpty {
-                ContentUnavailableView("No inspections", systemImage: "checklist")
-            } else {
-                ForEach(filtered) { inspection in
-                    NavigationLink {
-                        InspectionDetailView(inspection: inspection)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Truck \(inspection.truckNumber)").font(.headline)
-                                Spacer()
-                                Text(inspection.status)
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(inspection.status == "PASS" ? ThemeColor.primary : ThemeColor.error)
-                            }
-                            Text(companyWide ? inspection.driverName : formatDate(inspection.createdAt))
-                                .font(.caption)
-                                .foregroundStyle(ThemeColor.onSurfaceVariant)
-                            if let trailer = inspection.trailerNumber, !trailer.isEmpty {
-                                Text("Trailer \(trailer)").font(.caption2).foregroundStyle(ThemeColor.onSurfaceVariant)
-                            }
+        ScrollView {
+            LazyVStack(spacing: Spacing.md) {
+                if companyWide {
+                    SCFilterBar {
+                        TextField("Filter truck / driver", text: $truckFilter)
+                            .textFieldStyle(SCFieldStyle())
+                    }
+                }
+
+                if filtered.isEmpty {
+                    SCEmptyState(
+                        title: "No inspections",
+                        systemImage: "checklist",
+                        description: companyWide
+                            ? "No PTIs match this filter."
+                            : "Start a pre-trip before you roll."
+                    )
+                    .padding(.top, Spacing.xxl)
+                } else {
+                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, inspection in
+                        NavigationLink {
+                            InspectionDetailView(inspection: inspection)
+                        } label: {
+                            InspectionRowCard(inspection: inspection, showDriver: companyWide)
                         }
-                        .padding(.vertical, 2)
+                        .buttonStyle(.plain)
+                        .scAppearFade(delay: Double(min(index, 8)) * 0.04)
                     }
                 }
             }
+            .padding(Spacing.lg)
         }
-        .navigationTitle(companyWide ? "All PTIs" : "Inspections")
+        .background(ThemeColor.surface.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(companyWide ? "ALL PTIS" : "INSPECTIONS")
+                    .font(SCFont.sectionTitle)
+                    .foregroundStyle(ThemeColor.primary)
+                    .tracking(1.5)
+            }
             if !companyWide {
                 ToolbarItem(placement: .primaryAction) {
                     NavigationLink {
                         NewPTIView(profile: profile)
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(ThemeColor.primary)
                     }
                 }
             }
@@ -71,6 +80,36 @@ struct InspectionsListView: View {
         }
         .onDisappear { repo.stop() }
     }
+}
+
+struct InspectionRowCard: View {
+    let inspection: Inspection
+    var showDriver: Bool
+
+    var body: some View {
+        SCCard {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                HStack {
+                    Text("Truck \(inspection.truckNumber)")
+                        .font(SCFont.headline)
+                        .foregroundStyle(ThemeColor.onSurface)
+                    Spacer()
+                    SCStatusChip(
+                        text: inspection.status,
+                        color: ThemeColor.inspectionStatus(inspection.status)
+                    )
+                }
+                Text(showDriver ? inspection.driverName : formatDate(inspection.createdAt))
+                    .font(SCFont.caption)
+                    .foregroundStyle(ThemeColor.onSurfaceVariant)
+                if let trailer = inspection.trailerNumber, !trailer.isEmpty {
+                    Label("Trailer \(trailer)", systemImage: "shippingbox")
+                        .font(SCFont.caption)
+                        .foregroundStyle(ThemeColor.onSurfaceVariant)
+                }
+            }
+        }
+    }
 
     private func formatDate(_ iso: String) -> String {
         guard let date = ISO8601DateFormatter().date(from: iso) else { return iso }
@@ -82,38 +121,76 @@ struct InspectionDetailView: View {
     let inspection: Inspection
 
     var body: some View {
-        List {
-            Section("Unit") {
-                LabeledContent("Truck", value: inspection.truckNumber)
-                if let trailer = inspection.trailerNumber { LabeledContent("Trailer", value: trailer) }
-                LabeledContent("Driver", value: inspection.driverName)
-                LabeledContent("Status", value: inspection.status)
-                LabeledContent("Date", value: inspection.createdAt)
-            }
-            ForEach(inspection.sections) { section in
-                Section("\(section.type): \(section.title)") {
-                    ForEach(section.items) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(item.name)
-                                Spacer()
-                                Text((item.status ?? "—").uppercased())
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(item.status == "fail" ? ThemeColor.error : ThemeColor.primary)
-                            }
-                            if let notes = item.notes, !notes.isEmpty {
-                                Text(notes).font(.caption).foregroundStyle(ThemeColor.onSurfaceVariant)
-                            }
-                            if let photoUrl = item.photoUrl, !photoUrl.isEmpty {
-                                RemotePhotoView(urlString: photoUrl)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                SCCard {
+                    VStack(alignment: .leading, spacing: Spacing.md) {
+                        HStack {
+                            Text("UNIT")
+                                .font(SCFont.captionBold)
+                                .foregroundStyle(ThemeColor.onSurfaceVariant)
+                                .tracking(1)
+                            Spacer()
+                            SCStatusChip(
+                                text: inspection.status,
+                                color: ThemeColor.inspectionStatus(inspection.status)
+                            )
+                        }
+                        labeled("Truck", inspection.truckNumber)
+                        if let trailer = inspection.trailerNumber {
+                            labeled("Trailer", trailer)
+                        }
+                        labeled("Driver", inspection.driverName)
+                        labeled("Date", inspection.createdAt)
+                    }
+                }
+
+                ForEach(inspection.sections) { section in
+                    SCCard {
+                        VStack(alignment: .leading, spacing: Spacing.md) {
+                            Text("\(section.type.uppercased()) · \(section.title.uppercased())")
+                                .font(SCFont.captionBold)
+                                .foregroundStyle(ThemeColor.primary)
+                                .tracking(0.8)
+                            ForEach(section.items) { item in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text(item.name)
+                                            .font(SCFont.subheadline)
+                                            .foregroundStyle(ThemeColor.onSurface)
+                                        Spacer()
+                                        Text((item.status ?? "—").uppercased())
+                                            .font(SCFont.captionBold)
+                                            .foregroundStyle(item.status == "fail" ? ThemeColor.error : ThemeColor.success)
+                                    }
+                                    if let notes = item.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(SCFont.caption)
+                                            .foregroundStyle(ThemeColor.onSurfaceVariant)
+                                    }
+                                    if let photoUrl = item.photoUrl, !photoUrl.isEmpty {
+                                        RemotePhotoView(urlString: photoUrl)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+            .padding(Spacing.lg)
+            .scAppearFade()
         }
+        .background(ThemeColor.surface.ignoresSafeArea())
         .navigationTitle("PTI Detail")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func labeled(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title).font(SCFont.caption).foregroundStyle(ThemeColor.onSurfaceVariant)
+            Spacer()
+            Text(value).font(SCFont.subheadline).foregroundStyle(ThemeColor.onSurface)
+        }
     }
 }
 
@@ -131,13 +208,24 @@ struct NewPTIView: View {
     @State private var error: String?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    private var totalSteps: Int { 1 + PTIStepDefinition.steps.count + 1 } // vehicle + 10 + signature
+    private var totalSteps: Int { 1 + PTIStepDefinition.steps.count + 1 }
 
     var body: some View {
         VStack(spacing: 0) {
-            ProgressView(value: Double(step + 1), total: Double(totalSteps))
-                .tint(ThemeColor.primary)
-                .padding()
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text("NEW PTI")
+                    .font(SCFont.sectionTitle)
+                    .foregroundStyle(ThemeColor.primary)
+                    .tracking(1.5)
+                ProgressView(value: Double(step + 1), total: Double(totalSteps))
+                    .tint(ThemeColor.primary)
+                Text("Step \(step + 1) of \(totalSteps)")
+                    .font(SCFont.caption)
+                    .foregroundStyle(ThemeColor.onSurfaceVariant)
+            }
+            .padding(Spacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(ThemeColor.surfaceContainerLow)
 
             Group {
                 if step == 0 {
@@ -152,13 +240,15 @@ struct NewPTIView: View {
 
             HStack {
                 Button("Back") { step = max(0, step - 1) }
+                    .font(SCFont.button)
+                    .foregroundStyle(ThemeColor.primary)
                     .disabled(step == 0 || busy)
                 Spacer()
                 if step < totalSteps - 1 {
                     Button("Next") { step += 1 }
                         .disabled(!canAdvance)
                         .buttonStyle(SCPrimaryButtonStyle())
-                        .frame(width: 120)
+                        .frame(width: 140)
                 } else {
                     Button(busy ? "Submitting…" : "Submit PTI") {
                         Task { await submit() }
@@ -168,10 +258,10 @@ struct NewPTIView: View {
                     .frame(width: 160)
                 }
             }
-            .padding()
+            .padding(Spacing.lg)
+            .background(ThemeColor.surfaceContainer.ignoresSafeArea(edges: .bottom))
         }
         .background(ThemeColor.surface.ignoresSafeArea())
-        .navigationTitle("New PTI")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -185,46 +275,75 @@ struct NewPTIView: View {
     }
 
     private var vehicleStep: some View {
-        Form {
-            Section("Vehicle IDs") {
-                TextField("Truck number *", text: $truckNumber)
-                TextField("Trailer number (optional)", text: $trailerNumber)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                Text("Walk the truck and trailer. Fail anything unsafe before you roll.")
+                    .font(SCFont.subheadline)
+                    .foregroundStyle(ThemeColor.onSurfaceVariant)
+                SCCard {
+                    VStack(spacing: Spacing.md) {
+                        TextField("Truck number *", text: $truckNumber)
+                            .textFieldStyle(SCFieldStyle())
+                        TextField("Trailer number (optional)", text: $trailerNumber)
+                            .textFieldStyle(SCFieldStyle())
+                    }
+                }
             }
-            Text("Walk the truck and trailer. Fail anything unsafe and note it before you roll.")
-                .font(.footnote)
-                .foregroundStyle(ThemeColor.onSurfaceVariant)
+            .padding(Spacing.lg)
         }
     }
 
     private func checklistStep(_ def: (id: String, title: String, type: String, items: [String])) -> some View {
-        Group {
-            if sizeClass == .regular {
-                HStack(alignment: .top, spacing: 0) {
-                    Form {
-                        Section("\(def.type) · \(def.title)") {
-                            ForEach(def.items, id: \.self) { item in
-                                itemRow(defId: def.id, item: item)
-                            }
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                Text("\(def.type.uppercased()) · \(def.title.uppercased())")
+                    .font(SCFont.captionBold)
+                    .foregroundStyle(ThemeColor.primary)
+                    .tracking(1)
+                    .padding(.horizontal, Spacing.lg)
+
+                if sizeClass == .regular {
+                    HStack(alignment: .top, spacing: Spacing.lg) {
+                        checklistCard(def)
+                        defectCard(def)
                     }
-                    Form {
-                        Section("Defect details") {
-                            ForEach(def.items, id: \.self) { item in
-                                if itemStatus[key(def.id, item)] == "fail" {
-                                    TextField("Notes for \(item)", text: noteBinding(def.id, item), axis: .vertical)
-                                    DefectPhotoButton(title: item, image: photoBinding(def.id, item))
-                                }
-                            }
-                        }
-                    }
+                    .padding(.horizontal, Spacing.lg)
+                } else {
+                    checklistCard(def)
+                        .padding(.horizontal, Spacing.lg)
+                    defectCard(def)
+                        .padding(.horizontal, Spacing.lg)
                 }
-            } else {
-                Form {
-                    Section("\(def.type) · \(def.title)") {
-                        ForEach(def.items, id: \.self) { item in
-                            itemRow(defId: def.id, item: item)
-                            if itemStatus[key(def.id, item)] == "fail" {
+            }
+            .padding(.vertical, Spacing.lg)
+        }
+    }
+
+    private func checklistCard(_ def: (id: String, title: String, type: String, items: [String])) -> some View {
+        SCCard {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                ForEach(def.items, id: \.self) { item in
+                    itemRow(defId: def.id, item: item)
+                }
+            }
+        }
+    }
+
+    private func defectCard(_ def: (id: String, title: String, type: String, items: [String])) -> some View {
+        let fails = def.items.filter { itemStatus[key(def.id, $0)] == "fail" }
+        return Group {
+            if !fails.isEmpty {
+                SCCard {
+                    VStack(alignment: .leading, spacing: Spacing.lg) {
+                        Text("DEFECT DETAILS")
+                            .font(SCFont.captionBold)
+                            .foregroundStyle(ThemeColor.error)
+                            .tracking(1)
+                        ForEach(fails, id: \.self) { item in
+                            VStack(alignment: .leading, spacing: Spacing.sm) {
+                                Text(item).font(SCFont.headline).foregroundStyle(ThemeColor.onSurface)
                                 TextField("Notes", text: noteBinding(def.id, item), axis: .vertical)
+                                    .textFieldStyle(SCFieldStyle())
                                 DefectPhotoButton(title: item, image: photoBinding(def.id, item))
                             }
                         }
@@ -235,8 +354,8 @@ struct NewPTIView: View {
     }
 
     private func itemRow(defId: String, item: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(item).font(.subheadline.weight(.semibold))
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(item).font(SCFont.subheadline).fontWeight(.semibold).foregroundStyle(ThemeColor.onSurface)
             Picker("Status", selection: statusBinding(defId, item)) {
                 Text("Pass").tag(Optional("pass"))
                 Text("Fail").tag(Optional("fail"))
@@ -251,24 +370,33 @@ struct NewPTIView: View {
     }
 
     private var signatureStep: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Driver signature")
-                .font(.headline)
-                .padding(.horizontal)
-            SignatureCanvas(canvasView: $canvas)
-                .frame(maxWidth: .infinity)
-                .frame(height: sizeClass == .regular ? 320 : 220)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal)
-            Button("Clear") { canvas.drawing = PKDrawing() }
-                .padding(.horizontal)
-            if let error {
-                Text(error).foregroundStyle(ThemeColor.error).padding(.horizontal)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                Text("Driver signature confirms this PTI.")
+                    .font(SCFont.subheadline)
+                    .foregroundStyle(ThemeColor.onSurfaceVariant)
+                SCCard(padding: Spacing.md) {
+                    VStack(alignment: .leading, spacing: Spacing.md) {
+                        SignatureCanvas(canvasView: $canvas)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: sizeClass == .regular ? 320 : 220)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                                    .stroke(ThemeColor.outlineVariant, lineWidth: 1)
+                            )
+                        Button("Clear signature") { canvas.drawing = PKDrawing() }
+                            .font(SCFont.captionBold)
+                            .foregroundStyle(ThemeColor.primary)
+                        if let error {
+                            Text(error).font(SCFont.caption).foregroundStyle(ThemeColor.error)
+                        }
+                    }
+                }
             }
-            Spacer()
+            .padding(Spacing.lg)
         }
-        .padding(.top)
     }
 
     private func key(_ sectionId: String, _ item: String) -> String { "\(sectionId)::\(item)" }
