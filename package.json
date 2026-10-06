@@ -6,6 +6,8 @@
   "scripts": {
     "dev:mobile": "pnpm --filter @silver-crown/mobile start",
     "expo": "pnpm --filter @silver-crown/mobile exec expo",
+    "ios": "cd apps/ios && xcodegen generate && open SilverCrown.xcodeproj",
+    "ios:generate": "cd apps/ios && xcodegen generate",
     "dev:web": "pnpm --filter @silver-crown/web dev",
     "build:web": "pnpm --filter @silver-crown/web build",
     "test": "npx jest",

@@ -5,7 +5,8 @@ Full-stack trucking Pre-Trip Inspection (PTI) platform with a mobile driver app 
 ## Architecture
 
 ```
-apps/mobile/     Expo 56 React Native driver/admin mobile app
+apps/ios/        Native SwiftUI iOS/iPadOS app (primary mobile client)
+apps/mobile/     Expo 56 React Native app (legacy; being replaced by apps/ios)
 apps/web/        Vite + React admin dashboard
 packages/shared/ Firebase services, types, theme, PTI constants
 firebase/        Security rules, Cloud Functions, seed script
@@ -16,6 +17,7 @@ firebase/        Security rules, Cloud Functions, seed script
 - Node.js 20+
 - pnpm 9+
 - Firebase CLI (`npm i -g firebase-tools`)
+- Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) for the native iOS app
 
 ## Firebase Configuration
 
@@ -25,9 +27,18 @@ All Firebase credentials live in the **repo root** [`.env`](.env):
 - `VITE_*` — used by the web admin (Vite `envDir` points to repo root)
 - `USE_FIREBASE_EMULATORS` — set to `true` only for local emulator development
 
-For **iOS native builds**, place [`GoogleService-Info.plist`](GoogleService-Info.plist) in the repo root. It is referenced from [`apps/mobile/app.config.js`](apps/mobile/app.config.js) as `ios.googleServicesFile`.
+For **native Swift iOS**, copy [`GoogleService-Info.plist`](GoogleService-Info.plist) into [`apps/ios/SilverCrown/`](apps/ios/SilverCrown/) (a copy is kept in sync from the repo root). For legacy Expo builds, the same plist is referenced from [`apps/mobile/app.config.js`](apps/mobile/app.config.js).
 
 Copy [`.env.example`](.env.example) to `.env` and fill in values from Firebase Console → Project settings.
+
+### Native iOS app
+
+```bash
+pnpm ios
+# or: pnpm ios:generate && open apps/ios/SilverCrown.xcodeproj
+```
+
+See [`apps/ios/README.md`](apps/ios/README.md) for scheme, phone/iPad layouts, Maintenance Log, and Settings (light/dark appearance).
 
 ## Quick Start (Local with Emulators)
 
@@ -93,15 +104,13 @@ Copy [`.env.example`](.env.example) to `.env` and fill in values from Firebase C
 
 ## Features
 
-### Mobile (Driver)
+### Native iOS (Driver + Admin)
 - Login / Sign up with company invite code
-- Load board — view loads assigned to you
-- PTI wizard — 10-step inspection with photos and signature
-- Inspection history with PDF export
-
-### Mobile (Admin)
-- View all company loads with driver filter
-- View all inspections with driver/truck filters
+- Load board (driver) / company loads + create (admin)
+- PTI wizard — 10-step inspection with signature
+- Maintenance Log — truck/trailer service history
+- Settings — System / Light / Dark appearance
+- Adaptive layouts for iPhone and iPad
 
 ### Web Admin Dashboard
 - Dashboard with stats
@@ -109,6 +118,10 @@ Copy [`.env.example`](.env.example) to `.env` and fill in values from Firebase C
 - Inspection viewer with filters and PDF download
 - Driver list
 - Invite code generation (driver/admin roles)
+- Settings — System / Light / Dark appearance
+
+### Legacy Expo mobile
+Still available via `pnpm dev:mobile` during migration.
 
 ## Testing
 

@@ -6,6 +6,7 @@ export * from './firebase/config';
 export * from './firebase/auth';
 export * from './firebase/loads';
 export * from './firebase/inspections';
+export * from './firebase/maintenanceLogs';
 export * from './firebase/storageUpload';
 export * from './firebase/inviteCodes';
 export * from './firebase/companies';

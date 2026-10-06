@@ -232,5 +232,49 @@ export interface CompanyDocument {
   createdAt: string;
 }
 
+export type MaintenanceUnitType = 'truck' | 'trailer';
+
+export type MaintenanceCategory =
+  | 'oil'
+  | 'tires'
+  | 'brakes'
+  | 'electrical'
+  | 'cooling'
+  | 'coupling'
+  | 'body'
+  | 'DOT'
+  | 'other';
+
+export const MAINTENANCE_CATEGORIES: MaintenanceCategory[] = [
+  'oil',
+  'tires',
+  'brakes',
+  'electrical',
+  'cooling',
+  'coupling',
+  'body',
+  'DOT',
+  'other',
+];
+
+export interface MaintenanceLog {
+  id: string;
+  companyId: string;
+  unitType: MaintenanceUnitType;
+  unitNumber: string;
+  serviceDate: string;
+  category: MaintenanceCategory;
+  description: string;
+  odometerMiles?: number | null;
+  shopName?: string | null;
+  cost?: number | null;
+  performedByName: string;
+  createdByUid: string;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export type MaintenanceLogInput = Omit<MaintenanceLog, 'id' | 'createdAt'>;
+
 
 

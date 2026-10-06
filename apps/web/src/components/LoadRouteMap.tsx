@@ -4,13 +4,14 @@ import L from 'leaflet';
 import type { Coords, LoadStop } from '@silver-crown/shared';
 import { getOrderedStops, getRoutePolyline } from '@silver-crown/shared';
 import {
-  DARK_TILES,
+  getMapTiles,
   MAP_ATTRIBUTION,
   toLatLng,
   getStopIcon,
   pickupIcon,
   dropoffIcon,
 } from '../lib/mapUtils';
+import { useTheme } from '../context/ThemeContext';
 import 'leaflet/dist/leaflet.css';
 
 function FitBounds({ points }: { points: [number, number][] }) {
@@ -47,6 +48,7 @@ export default function LoadRouteMap({
   className = '',
   routeColor = '#89ceff',
 }: LoadRouteMapProps) {
+  const { resolved } = useTheme();
   const polyline = stops?.length
     ? getOrderedStops({ stops }).map((s) => s.coords)
     : getRoutePolyline({ stops, originCoords, destCoords });
@@ -88,7 +90,7 @@ export default function LoadRouteMap({
         touchZoom={interactive}
         attributionControl={interactive}
       >
-        <TileLayer url={DARK_TILES} attribution={MAP_ATTRIBUTION} />
+        <TileLayer url={getMapTiles(resolved)} attribution={MAP_ATTRIBUTION} />
         <FitBounds points={latLngs} />
         {orderedStops.map((stop, index) => (
           <Marker

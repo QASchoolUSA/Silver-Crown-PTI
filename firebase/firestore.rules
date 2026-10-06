@@ -86,6 +86,21 @@ service cloud.firestore {
     match /documents/{docId} {
       allow read, create, update, delete: if isSignedIn();
     }
+
+    match /maintenanceLogs/{logId} {
+      allow read: if isUser() && resource.data.companyId == userCompanyId();
+      allow create: if isUser()
+        && request.resource.data.companyId == userCompanyId()
+        && request.resource.data.createdByUid == request.auth.uid;
+      allow update: if isUser()
+        && resource.data.companyId == userCompanyId()
+        && (isAdmin() || resource.data.createdByUid == request.auth.uid)
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.createdByUid == resource.data.createdByUid;
+      allow delete: if isUser()
+        && resource.data.companyId == userCompanyId()
+        && (isAdmin() || resource.data.createdByUid == request.auth.uid);
+    }
   }
 }
 

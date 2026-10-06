@@ -13,6 +13,8 @@ import DriverDetailPage from './pages/DriverDetailPage';
 import InviteCodesPage from './pages/InviteCodesPage';
 import DocumentsPage from './pages/DocumentsPage';
 import ImportLoadsPage from './pages/ImportLoadsPage';
+import SettingsPage from './pages/SettingsPage';
+import MaintenancePage from './pages/MaintenancePage';
 import { firebaseInitError } from './lib/firebase';
 
 function FirebaseSetupScreen({ message }: { message: string }) {
@@ -67,6 +69,8 @@ export default function App() {
             <Route path="/drivers" element={<DriversPage />} />
             <Route path="/drivers/:id" element={<DriverDetailPage />} />
             <Route path="/invite-codes" element={<InviteCodesPage />} />
+            <Route path="/maintenance" element={<MaintenancePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

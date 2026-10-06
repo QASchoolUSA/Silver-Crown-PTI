@@ -1,19 +1,50 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #131317;
-  --color-surface-container-low: #1b1b1f;
-  --color-surface-container: #1f1f23;
-  --color-surface-container-high: #2a292e;
-  --color-on-surface: #e4e1e7;
-  --color-on-surface-variant: #bdc8d2;
-  --color-outline-variant: #3e4851;
-  --color-primary: #89ceff;
-  --color-on-primary: #00344d;
-  --color-error: #ffb4ab;
-  --color-error-container: #93000a;
+  --color-surface: var(--sc-surface);
+  --color-surface-container-low: var(--sc-surface-container-low);
+  --color-surface-container: var(--sc-surface-container);
+  --color-surface-container-high: var(--sc-surface-container-high);
+  --color-on-surface: var(--sc-on-surface);
+  --color-on-surface-variant: var(--sc-on-surface-variant);
+  --color-outline-variant: var(--sc-outline-variant);
+  --color-primary: var(--sc-primary);
+  --color-on-primary: var(--sc-on-primary);
+  --color-error: var(--sc-error);
+  --color-error-container: var(--sc-error-container);
   --font-bebas: "Bebas Neue", sans-serif;
   --font-montserrat: "Montserrat", sans-serif;
+}
+
+:root,
+[data-theme="dark"] {
+  --sc-surface: #131317;
+  --sc-surface-container-low: #1b1b1f;
+  --sc-surface-container: #1f1f23;
+  --sc-surface-container-high: #2a292e;
+  --sc-on-surface: #e4e1e7;
+  --sc-on-surface-variant: #bdc8d2;
+  --sc-outline-variant: #3e4851;
+  --sc-primary: #89ceff;
+  --sc-on-primary: #00344d;
+  --sc-error: #ffb4ab;
+  --sc-error-container: #93000a;
+  --sc-map-attribution-bg: rgba(31, 31, 35, 0.85);
+}
+
+[data-theme="light"] {
+  --sc-surface: #f5f7fa;
+  --sc-surface-container-low: #eef2f6;
+  --sc-surface-container: #e4ebf2;
+  --sc-surface-container-high: #d8e2ec;
+  --sc-on-surface: #1a1c1e;
+  --sc-on-surface-variant: #3e4851;
+  --sc-outline-variant: #b8c4cf;
+  --sc-primary: #006591;
+  --sc-on-primary: #ffffff;
+  --sc-error: #ba1a1a;
+  --sc-error-container: #ffdad6;
+  --sc-map-attribution-bg: rgba(238, 242, 246, 0.9);
 }
 
 body {
@@ -39,7 +70,7 @@ body {
 }
 
 .leaflet-control-attribution {
-  background: rgba(31, 31, 35, 0.85) !important;
+  background: var(--sc-map-attribution-bg) !important;
   color: var(--color-on-surface-variant) !important;
 }
 

@@ -5,7 +5,7 @@ import L from 'leaflet';
 import type { Load, LoadStop } from '@silver-crown/shared';
 import { getOrderedStops, getRoutePolyline } from '@silver-crown/shared';
 import {
-  DARK_TILES,
+  getMapTiles,
   MAP_ATTRIBUTION,
   toLatLng,
   ROUTE_COLORS,
@@ -13,6 +13,7 @@ import {
   hasMapCoords,
   getStopIcon,
 } from '../lib/mapUtils';
+import { useTheme } from '../context/ThemeContext';
 import 'leaflet/dist/leaflet.css';
 
 function FitBounds({ points }: { points: [number, number][] }) {
@@ -44,6 +45,7 @@ interface ActiveLoadsMapProps {
 }
 
 export default function ActiveLoadsMap({ loads, height = '420px' }: ActiveLoadsMapProps) {
+  const { resolved } = useTheme();
   const mappableLoads = loads.filter(hasMapCoords);
   const points = collectRoutePoints(mappableLoads);
 
@@ -75,7 +77,7 @@ export default function ActiveLoadsMap({ loads, height = '420px' }: ActiveLoadsM
     <div className="rounded-lg overflow-hidden border border-outline-variant">
       <div style={{ height }}>
         <MapContainer center={defaultCenter} zoom={4} style={{ height: '100%', width: '100%' }}>
-          <TileLayer url={DARK_TILES} attribution={MAP_ATTRIBUTION} />
+          <TileLayer url={getMapTiles(resolved)} attribution={MAP_ATTRIBUTION} />
           <FitBounds points={points} />
 
           {mappableLoads.map((load) => {
